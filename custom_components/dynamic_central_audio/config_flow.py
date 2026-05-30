@@ -150,7 +150,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Optional("source_display_name", default=f"Source {source_num}"): str,
                 vol.Optional("source_name", default=""): source_name_field,
-                vol.Optional("source_watcher_entity", default=""): selector.EntitySelector(
+                vol.Optional("source_watcher_entity"): selector.EntitySelector(
                     selector.EntitySelectorConfig()
                 ),
                 vol.Optional("active_state", default=DEFAULT_ACTIVE_STATE): str,
@@ -365,7 +365,11 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
             data_schema=vol.Schema({
                 vol.Optional("source_display_name", default=src.get("display_name", f"Source {len(self._sources)+1}")): str,
                 vol.Optional("source_name", default=src.get("source_name", "")): source_name_field,
-                vol.Optional("source_watcher_entity", default=src.get("watcher_entity", "")): selector.EntitySelector(selector.EntitySelectorConfig()),
+                **({
+                    vol.Optional("source_watcher_entity", default=src["watcher_entity"]): selector.EntitySelector(selector.EntitySelectorConfig())
+                } if src.get("watcher_entity") else {
+                    vol.Optional("source_watcher_entity"): selector.EntitySelector(selector.EntitySelectorConfig())
+                }),
                 vol.Optional("active_state", default=src.get("active_state", DEFAULT_ACTIVE_STATE)): str,
                 vol.Optional("base_volume", default=src.get("base_volume", DEFAULT_BASE_VOLUME)): selector.NumberSelector(selector.NumberSelectorConfig(min=0.0, max=1.0, step=0.05)),
                 vol.Optional("priority", default=src.get("priority", DEFAULT_PRIORITY)): selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=20, step=1)),
