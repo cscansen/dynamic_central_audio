@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dynamic Central Audio",
+        "description": "Choose what to configure.",
+        "data": {
+          "setup_type": "Setup type"
+        }
+      },
+      "system": {
+        "title": "Audio System Setup",
+        "description": "{step_title}",
+        "data": {
+          "system_name": "System name",
+          "reference_entity": "Reference zone entity (for source list discovery)",
+          "source_off_delay_seconds": "Source-off delay (seconds)"
+        }
+      },
+      "add_source": {
+        "title": "Configure Source",
+        "description": "{step_title} — {hint}",
+        "data": {
+          "source_display_name": "Display name",
+          "source_name": "Input name (on the controller)",
+          "source_watcher_entity": "Watcher entity (what to watch for active playback)",
+          "active_state": "Active state (e.g. playing)",
+          "base_volume": "Base volume (0.0–1.0)",
+          "gate_entity": "Gate entity (optional — must also be in gate state)",
+          "gate_state": "Gate state (default: on)",
+          "priority": "Priority (0 = highest)",
+          "add_another": "Add another source?"
+        }
+      },
+      "zone": {
+        "title": "Zone Setup",
+        "description": "{step_title}",
+        "data": {
+          "zone_name": "Zone name",
+          "system_entry_id": "Audio system"
+        }
+      },
+      "zone_player": {
+        "title": "Zone Media Player",
+        "description": "{step_title}",
+        "data": {
+          "media_player": "Media player entity"
+        }
+      },
+      "zone_sensors": {
+        "title": "Zone Occupancy",
+        "description": "{step_title}",
+        "data": {
+          "occupancy_sensors": "Occupancy sensors",
+          "off_delay_seconds": "Off delay (seconds after room empties)"
+        }
+      },
+      "zone_atv": {
+        "title": "ATV Exclusions",
+        "description": "{step_title}",
+        "data": {
+          "atv_entity": "Apple TV / streaming device entity (leave blank to skip)",
+          "restore_condition": "Restore condition",
+          "restore_delay_seconds": "Restore delay (seconds, for occupied condition)",
+          "airplay_exception": "Allow AirPlay exception (zone re-follows if AirPlay active when ATV stops)",
+          "amp_switch": "Amp switch (optional — turn on when ATV plays, off when restored)",
+          "add_another": "Add another ATV exclusion?"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Already configured.",
+      "no_systems_configured": "No audio systems configured. Add a system first."
+    },
+    "error": {
+      "no_systems": "No audio systems found. Add a system entry first."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Edit System",
+        "data": {
+          "reference_entity": "Reference zone entity",
+          "source_off_delay_seconds": "Source-off delay (seconds)"
+        }
+      },
+      "edit_source": {
+        "title": "Edit Source",
+        "data": {
+          "source_display_name": "Display name",
+          "source_name": "Input name",
+          "source_watcher_entity": "Watcher entity",
+          "active_state": "Active state",
+          "base_volume": "Base volume",
+          "gate_entity": "Gate entity",
+          "gate_state": "Gate state",
+          "priority": "Priority",
+          "add_another": "Add another source?"
+        }
+      },
+      "atv": {
+        "title": "Edit ATV Exclusions",
+        "data": {
+          "atv_entity": "ATV entity",
+          "restore_condition": "Restore condition",
+          "restore_delay_seconds": "Restore delay (seconds)",
+          "airplay_exception": "AirPlay exception",
+          "amp_switch": "Amp switch",
+          "add_another": "Add another?"
+        }
+      }
+    }
+  }
+}
