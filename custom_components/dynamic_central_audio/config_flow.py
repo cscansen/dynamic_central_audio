@@ -282,7 +282,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.NumberSelectorConfig(min=0, max=1800, step=30, unit_of_measurement="s")
                 ),
                 vol.Optional("airplay_exception", default=True): bool,
-                vol.Optional("amp_switch", default=""): selector.EntitySelector(
+                vol.Optional("amp_switch"): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="switch")
                 ),
                 vol.Optional("add_another", default=False): bool,
@@ -444,9 +444,15 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
                     selector.NumberSelectorConfig(min=0, max=1800, step=30, unit_of_measurement="s")
                 ),
                 vol.Optional("airplay_exception", default=excl.get("airplay_exception", True)): bool,
-                vol.Optional("amp_switch", default=excl.get("amp_switch", "")): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="switch")
-                ),
+                **({
+                    vol.Optional("amp_switch", default=excl["amp_switch"]): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="switch")
+                    )
+                } if excl.get("amp_switch") else {
+                    vol.Optional("amp_switch"): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="switch")
+                    )
+                }),
                 vol.Optional("add_another", default=False): bool,
             }),
         )
