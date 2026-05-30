@@ -9,11 +9,88 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE, ROUTING_NONE
-from .coordinator import SystemCoordinator, ZoneCoordinator
+from .coordinator import SystemCoordinator, ZoneCoordinator, _excl_entities
 
 
 def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9_]", "", name.lower().replace(" ", "_"))
+
+
+def _system_reasoning(coord: SystemCoordinator) -> str:
+    if not coord._system_active:
+        return "System disabled — master switch is off"
+
+    sources = coord.get_sources()
+    if not sources:
+        return "No sources configured"
+
+    lines = []
+    active = coord.active_source
+
+    for src in sorted(sources, key=lambda s: int(s.get("priority", 99))):
+        name = src.get("display_name", "?")
+        watcher = src.get("watcher_entity", "")
+        follow_me = coord._source_follow_me.get(name, True)
+        state = coord.hass.states.get(watcher) if watcher else None
+        state_str = state.state if state else "unavailable"
+        is_active = active and active.get("display_name") == name
+        marker = "▶" if is_active else "◌"
+        fm_str = "  [follow-me OFF]" if not follow_me else ""
+        lines.append(f"{marker} {name}: {state_str}{fm_str}")
+
+    if not active:
+        lines.insert(0, "No source active\n")
+
+    return "\n".join(lines)
+
+
+def _zone_reasoning(coord: ZoneCoordinator) -> str:
+    system = coord.get_system_coordinator()
+
+    if not system:
+        return "No parent system found"
+    if not system._system_active:
+        return "Parent system is inactive (master switch off)"
+    if not coord._follow_me:
+        return "Follow Me is disabled for this zone"
+
+    if coord._atv_excluded_by:
+        exclusions = coord.config.get("atv_exclusions", [])
+        details = []
+        for excl in exclusions:
+            active_atvs = [e for e in _excl_entities(excl) if e in coord._atv_excluded_by]
+            if not active_atvs:
+                continue
+            condition = excl.get("restore_condition", "any_stopped")
+            delay = int(excl.get("restore_delay_seconds", 0))
+            restore_str = f"restores: {condition}"
+            if delay:
+                restore_str += f" + {delay}s delay"
+            details.append(f"  • {', '.join(active_atvs)}\n    ({restore_str})")
+        return "Excluded by local device:\n" + "\n".join(details)
+
+    active_source = system.active_source
+    occupied = coord._is_occupied()
+    sensors = coord.config.get("occupancy_sensors", [])
+
+    if active_source and occupied:
+        base = float(active_source.get("base_volume", 0.7))
+        offset = coord._volume_offset
+        vol = round(max(0.0, min(1.0, base + offset)), 2)
+        occ_str = "always occupied (no sensors configured)" if not sensors else "occupied"
+        return (
+            f"Following: {active_source['display_name']}\n"
+            f"  • Zone is {occ_str}\n"
+            f"  • Volume: {vol:.2f}  (base {base:.2f}  offset {offset:+.2f})"
+        )
+
+    if active_source and not occupied:
+        return (
+            f"Source active ({active_source['display_name']}) — zone unoccupied\n"
+            f"  • Will activate when occupancy detected"
+        )
+
+    return "Idle — no active source"
 
 
 async def async_setup_entry(
@@ -57,6 +134,7 @@ class SystemStatusSensor(CoordinatorEntity, SensorEntity):
         attrs: dict = {
             "system_active": self.coordinator._system_active,
             "routing_mode": self.coordinator.routing_mode,
+            "reasoning": _system_reasoning(self.coordinator),
         }
         if source:
             attrs["active_source"] = source.get("display_name")
@@ -100,6 +178,7 @@ class ZoneStatusSensor(CoordinatorEntity, SensorEntity):
             "follow_me": self.coordinator._follow_me,
             "volume_offset": self.coordinator._volume_offset,
             "routing_mode": self.coordinator.data.get("routing_mode", ROUTING_NONE) if self.coordinator.data else ROUTING_NONE,
+            "reasoning": _zone_reasoning(self.coordinator),
         }
         if self.coordinator._atv_excluded_by:
             attrs["atv_excluded_by"] = list(self.coordinator._atv_excluded_by)

@@ -1,7 +1,7 @@
 {
   "domain": "dynamic_central_audio",
   "name": "Dynamic Central Audio",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "config_flow": true,
   "documentation": "https://github.com/cscansen/dynamic_central_audio",
   "issue_tracker": "https://github.com/cscansen/dynamic_central_audio/issues",
