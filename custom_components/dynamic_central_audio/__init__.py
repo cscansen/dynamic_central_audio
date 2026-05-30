@@ -45,15 +45,12 @@ async def _setup_system_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
     await coordinator.async_config_entry_first_refresh()
 
-    # Watch all source watcher + gate entities
+    # Watch all source watcher entities
     watch_entities: set[str] = set()
     for source in coordinator.get_sources():
         watcher = source.get("watcher_entity")
         if watcher:
             watch_entities.add(watcher)
-        gate = source.get("gate_entity")
-        if gate:
-            watch_entities.add(gate)
 
     if watch_entities:
         unsub = async_track_state_change_event(

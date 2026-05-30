@@ -26,7 +26,14 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
     if entry_type == ENTRY_TYPE_SYSTEM:
-        async_add_entities([SystemActiveSwitch(coordinator)])
+        sources = entry.data.get("sources", entry.options.get("sources", []))
+        entities = [SystemActiveSwitch(coordinator)]
+        entities += [
+            SourceFollowMeSwitch(coordinator, src["display_name"])
+            for src in sources
+            if src.get("display_name")
+        ]
+        async_add_entities(entities)
     elif entry_type == ENTRY_TYPE_ZONE:
         zone_name = entry.data.get("zone_name", "Zone")
         async_add_entities([ZoneFollowMeSwitch(coordinator, zone_name)])
@@ -109,4 +116,45 @@ class ZoneFollowMeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         self.coordinator.set_follow_me(False)
+        self.async_write_ha_state()
+
+
+class SourceFollowMeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
+    """Per-source follow-me enable/disable switch."""
+
+    def __init__(self, coordinator: SystemCoordinator, display_name: str) -> None:
+        super().__init__(coordinator)
+        system_slug = _slugify(coordinator.system_name)
+        source_slug = _slugify(display_name)
+        self._display_name = display_name
+        self._attr_unique_id = f"{DOMAIN}_{system_slug}_{source_slug}_follow_me"
+        self.entity_id = f"switch.{DOMAIN}_{system_slug}_{source_slug}_follow_me"
+        self._attr_has_entity_name = True
+        self._attr_name = f"{display_name} Follow Me"
+        self._attr_icon = "mdi:music-note-plus"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        enabled = last.state == "on" if last is not None else True
+        self.coordinator._source_follow_me[self._display_name] = enabled
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator._source_follow_me.get(self._display_name, True)
+
+    @property
+    def device_info(self):
+        slug = _slugify(self.coordinator.system_name)
+        return {
+            "identifiers": {(DOMAIN, f"system_{slug}")},
+            "name": f"{self.coordinator.system_name}",
+        }
+
+    async def async_turn_on(self, **kwargs) -> None:
+        self.coordinator.set_source_follow_me(self._display_name, True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        self.coordinator.set_source_follow_me(self._display_name, False)
         self.async_write_ha_state()

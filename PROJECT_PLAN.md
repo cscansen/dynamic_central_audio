@@ -178,18 +178,18 @@ adaptive_central_audio/              ← git repo root
 
 ## Build Status
 - [x] PROJECT_PLAN.md
-- [ ] manifest.json
-- [ ] hacs.json
-- [ ] const.py
-- [ ] coordinator.py
-- [ ] __init__.py
-- [ ] switch.py
-- [ ] sensor.py
-- [ ] number.py
-- [ ] config_flow.py
-- [ ] strings.json + translations/en.json
-- [ ] Git init + README
-- [ ] GitHub repo creation
+- [x] manifest.json
+- [x] hacs.json
+- [x] const.py
+- [x] coordinator.py
+- [x] __init__.py
+- [x] switch.py
+- [x] sensor.py
+- [x] number.py
+- [x] config_flow.py
+- [x] strings.json + translations/en.json
+- [x] Git init + README (v0.1.0 committed)
+- [ ] GitHub repo creation (private, push remote)
 - [ ] HACS validation
 - [ ] HA install + test
 - [ ] Retire old automations

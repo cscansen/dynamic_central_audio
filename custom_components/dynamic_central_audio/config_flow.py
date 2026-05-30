@@ -15,7 +15,6 @@ from .const import (
     ENTRY_TYPE_ZONE,
     DEFAULT_ACTIVE_STATE,
     DEFAULT_BASE_VOLUME,
-    DEFAULT_GATE_STATE,
     DEFAULT_OFF_DELAY,
     DEFAULT_RESTORE_DELAY,
     DEFAULT_SOURCE_OFF_DELAY,
@@ -99,13 +98,15 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("system_name"): str,
                 vol.Optional("reference_entity", default=""): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="media_player")
+                    selector.EntitySelectorConfig(domain="media_player"),
                 ),
                 vol.Optional("source_off_delay_seconds", default=DEFAULT_SOURCE_OFF_DELAY): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=30, max=1800, step=30, unit_of_measurement="s")
                 ),
             }),
-            description_placeholders={"step_title": "Step 1: System Setup"},
+            description_placeholders={
+                "step_title": "Step 1: System Setup — pick any zone media player from your system; its source list will populate the input dropdown on the next step."
+            },
         )
 
     # ── System: step 2 — add source (loops until done) ───────────────────────
@@ -120,8 +121,6 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "watcher_entity": watcher,
                     "active_state": user_input.get("active_state", DEFAULT_ACTIVE_STATE),
                     "base_volume": float(user_input.get("base_volume", DEFAULT_BASE_VOLUME)),
-                    "gate_entity": user_input.get("gate_entity") or None,
-                    "gate_state": user_input.get("gate_state", DEFAULT_GATE_STATE),
                     "priority": int(user_input.get("priority", DEFAULT_PRIORITY)),
                 })
 
@@ -158,10 +157,6 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("base_volume", default=DEFAULT_BASE_VOLUME): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0.0, max=1.0, step=0.05)
                 ),
-                vol.Optional("gate_entity", default=""): selector.EntitySelector(
-                    selector.EntitySelectorConfig()
-                ),
-                vol.Optional("gate_state", default=DEFAULT_GATE_STATE): str,
                 vol.Optional("priority", default=source_num): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=20, step=1)
                 ),
@@ -344,8 +339,6 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                     "watcher_entity": watcher,
                     "active_state": user_input.get("active_state", DEFAULT_ACTIVE_STATE),
                     "base_volume": float(user_input.get("base_volume", DEFAULT_BASE_VOLUME)),
-                    "gate_entity": user_input.get("gate_entity") or None,
-                    "gate_state": user_input.get("gate_state", DEFAULT_GATE_STATE),
                     "priority": int(user_input.get("priority", DEFAULT_PRIORITY)),
                 })
             if user_input.get("add_another") and watcher:
@@ -369,8 +362,6 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("source_watcher_entity", default=src.get("watcher_entity", "")): selector.EntitySelector(selector.EntitySelectorConfig()),
                 vol.Optional("active_state", default=src.get("active_state", DEFAULT_ACTIVE_STATE)): str,
                 vol.Optional("base_volume", default=src.get("base_volume", DEFAULT_BASE_VOLUME)): selector.NumberSelector(selector.NumberSelectorConfig(min=0.0, max=1.0, step=0.05)),
-                vol.Optional("gate_entity", default=src.get("gate_entity", "")): selector.EntitySelector(selector.EntitySelectorConfig()),
-                vol.Optional("gate_state", default=src.get("gate_state", DEFAULT_GATE_STATE)): str,
                 vol.Optional("priority", default=src.get("priority", DEFAULT_PRIORITY)): selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=20, step=1)),
                 vol.Optional("add_another", default=False): bool,
             }),

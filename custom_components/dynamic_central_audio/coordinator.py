@@ -50,6 +50,8 @@ class SystemCoordinator(DataUpdateCoordinator):
         self._system_active: bool = True
         self.routing_mode: str = ROUTING_NONE
         self.active_source: Optional[dict] = None
+        # Per-source follow-me state: keyed by source display_name
+        self._source_follow_me: dict[str, bool] = {}
 
     @property
     def system_name(self) -> str:
@@ -59,9 +61,12 @@ class SystemCoordinator(DataUpdateCoordinator):
         return self.config.get("sources", [])
 
     def resolve_routing(self) -> Optional[dict]:
-        """Return the highest-priority active source, or None."""
+        """Return the highest-priority active and follow-me-enabled source, or None."""
         sources = sorted(self.get_sources(), key=lambda s: int(s.get("priority", 99)))
         for source in sources:
+            display_name = source.get("display_name", "")
+            if not self._source_follow_me.get(display_name, True):
+                continue
             watcher = source.get("watcher_entity")
             if not watcher:
                 continue
@@ -69,14 +74,12 @@ class SystemCoordinator(DataUpdateCoordinator):
             state = self.hass.states.get(watcher)
             if not state or state.state != active_state:
                 continue
-            gate = source.get("gate_entity")
-            if gate:
-                gate_required = source.get("gate_state", "on")
-                gate_state = self.hass.states.get(gate)
-                if not gate_state or gate_state.state != gate_required:
-                    continue
             return source
         return None
+
+    def set_source_follow_me(self, display_name: str, enabled: bool) -> None:
+        self._source_follow_me[display_name] = enabled
+        self.hass.async_create_task(self._async_source_changed())
 
     @callback
     def handle_source_change(self, event) -> None:

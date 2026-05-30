@@ -10,7 +10,6 @@ SCAN_INTERVAL_SECONDS = 60
 
 # Source defaults
 DEFAULT_ACTIVE_STATE = "playing"
-DEFAULT_GATE_STATE = "on"
 DEFAULT_BASE_VOLUME = 0.70
 DEFAULT_PRIORITY = 5
 DEFAULT_SOURCE_OFF_DELAY = 300  # 5 min — delay before zones shut off when source stops

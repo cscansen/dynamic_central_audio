@@ -13,7 +13,7 @@
         "description": "{step_title}",
         "data": {
           "system_name": "System name",
-          "reference_entity": "Reference zone entity (for source list discovery)",
+          "reference_entity": "Any zone media player (used to discover source inputs)",
           "source_off_delay_seconds": "Source-off delay (seconds)"
         }
       },
@@ -26,8 +26,6 @@
           "source_watcher_entity": "Watcher entity (what to watch for active playback)",
           "active_state": "Active state (e.g. playing)",
           "base_volume": "Base volume (0.0–1.0)",
-          "gate_entity": "Gate entity (optional — must also be in gate state)",
-          "gate_state": "Gate state (default: on)",
           "priority": "Priority (0 = highest)",
           "add_another": "Add another source?"
         }
@@ -93,8 +91,6 @@
           "source_watcher_entity": "Watcher entity",
           "active_state": "Active state",
           "base_volume": "Base volume",
-          "gate_entity": "Gate entity",
-          "gate_state": "Gate state",
           "priority": "Priority",
           "add_another": "Add another source?"
         }
