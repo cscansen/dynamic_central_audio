@@ -9,7 +9,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE
-from .coordinator import SystemCoordinator, ZoneCoordinator
+from .coordinator import SystemCoordinator, ZoneCoordinator, _excl_entities
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,11 +79,11 @@ async def _setup_zone_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         entry.async_on_unload(unsub)
 
-    # Watch ATV entities
+    # Watch ATV entities (supports both atv_entities list and legacy atv_entity)
     atv_entities = [
-        e.get("atv_entity")
-        for e in config.get("atv_exclusions", [])
-        if e.get("atv_entity")
+        entity
+        for excl in config.get("atv_exclusions", [])
+        for entity in _excl_entities(excl)
     ]
     if atv_entities:
         unsub = async_track_state_change_event(
@@ -103,6 +103,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coord = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if isinstance(coord, ZoneCoordinator):
         coord._cancel_all_deactivate_timers()
+        coord._cancel_all_restore_timers()
 
     if await hass.config_entries.async_unload_platforms(entry, platforms):
         hass.data[DOMAIN].pop(entry.entry_id, None)

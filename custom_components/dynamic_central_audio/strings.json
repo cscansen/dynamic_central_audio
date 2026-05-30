@@ -57,11 +57,11 @@
         "title": "ATV Exclusions",
         "description": "{step_title}",
         "data": {
-          "atv_entity": "Apple TV / streaming device entity (leave blank to skip)",
+          "atv_entities": "Streaming device(s) — leave blank to skip",
           "restore_condition": "Restore condition",
-          "restore_delay_seconds": "Restore delay (seconds, for occupied condition)",
+          "restore_delay_seconds": "Restore delay (seconds before zone re-follows after device stops)",
           "airplay_exception": "Allow AirPlay exception (zone re-follows if AirPlay active when ATV stops)",
-          "amp_switch": "Amp switch (optional — turn on when ATV plays, off when restored)",
+          "amp_switch": "Amp switch (turn on when device plays, off when restored)",
           "add_another": "Add another ATV exclusion?"
         }
       }
@@ -98,7 +98,7 @@
       "atv": {
         "title": "Edit ATV Exclusions",
         "data": {
-          "atv_entity": "ATV entity",
+          "atv_entities": "Streaming device(s)",
           "restore_condition": "Restore condition",
           "restore_delay_seconds": "Restore delay (seconds)",
           "airplay_exception": "AirPlay exception",

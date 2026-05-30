@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import timedelta
-from typing import Optional
+from typing import Any, Optional
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -15,7 +15,6 @@ from .const import (
     ENTRY_TYPE_ZONE,
     SCAN_INTERVAL_SECONDS,
     DEFAULT_OFF_DELAY,
-    DEFAULT_RESTORE_DELAY,
     DEFAULT_SOURCE_OFF_DELAY,
     DEFAULT_VOLUME_OFFSET,
     RESTORE_ANY_STOPPED,
@@ -32,6 +31,15 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _excl_entities(excl: dict) -> list[str]:
+    """Return ATV entity list from an exclusion rule (supports atv_entities and legacy atv_entity)."""
+    entities = excl.get("atv_entities")
+    if entities:
+        return list(entities)
+    single = excl.get("atv_entity")
+    return [single] if single else []
 
 
 class SystemCoordinator(DataUpdateCoordinator):
@@ -83,7 +91,7 @@ class SystemCoordinator(DataUpdateCoordinator):
 
     @callback
     def handle_source_change(self, event) -> None:
-        """Called when any watcher or gate entity changes state."""
+        """Called when any watcher entity changes state."""
         self.hass.async_create_task(self._async_source_changed())
 
     async def _async_source_changed(self) -> None:
@@ -160,6 +168,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
         # ATV exclusion tracking: set of atv entity_ids currently overriding this zone
         self._atv_excluded_by: set[str] = set()
 
+        # Pending restore timer handles keyed by entity_id (cancelled if ATV resumes)
+        self._atv_restore_handles: dict[str, Any] = {}
+
         # Pending deactivation timer handles
         self._occ_deactivate_handle = None
         self._source_deactivate_handle = None
@@ -194,7 +205,6 @@ class ZoneCoordinator(DataUpdateCoordinator):
             self._cancel_occ_deactivate()
             self.hass.async_create_task(self.async_request_refresh())
         else:
-            # Only schedule deactivate if ALL sensors are off
             if not self._is_occupied():
                 self._schedule_occ_deactivate()
 
@@ -251,15 +261,24 @@ class ZoneCoordinator(DataUpdateCoordinator):
         self._cancel_occ_deactivate()
         self._cancel_source_deactivate()
 
+    def _cancel_all_restore_timers(self) -> None:
+        for cancel in self._atv_restore_handles.values():
+            cancel()
+        self._atv_restore_handles.clear()
+
     # ── ATV exclusion ─────────────────────────────────────────────────────────
 
     async def _process_atv_change(self, entity_id: str, new_state_str: str) -> None:
         exclusions = self.config.get("atv_exclusions", [])
-        excl = next((e for e in exclusions if e.get("atv_entity") == entity_id), None)
+        excl = next((e for e in exclusions if entity_id in _excl_entities(e)), None)
         if not excl:
             return
 
         if new_state_str == "playing":
+            # Cancel any pending restore for this entity before re-excluding
+            if entity_id in self._atv_restore_handles:
+                self._atv_restore_handles.pop(entity_id)()
+
             self._atv_excluded_by.add(entity_id)
             _LOGGER.info("%s: ATV override by %s", self.zone_name, entity_id)
             async with self._lock:
@@ -271,30 +290,27 @@ class ZoneCoordinator(DataUpdateCoordinator):
         elif new_state_str in ("idle", "off", "paused"):
             if entity_id not in self._atv_excluded_by:
                 return
-            if self._should_restore(entity_id, excl, exclusions):
-                restore_delay = int(excl.get("restore_delay_seconds", DEFAULT_RESTORE_DELAY))
-                condition = excl.get("restore_condition", RESTORE_ANY_STOPPED)
-                if condition == RESTORE_OCCUPIED:
-                    async_call_later(
+            if self._should_restore(entity_id, excl):
+                restore_delay = int(excl.get("restore_delay_seconds", 0))
+                if restore_delay > 0:
+                    handle = async_call_later(
                         self.hass, restore_delay,
                         lambda _, eid=entity_id, e=excl: self.hass.async_create_task(
                             self._restore_from_atv(eid, e)
                         ),
                     )
+                    self._atv_restore_handles[entity_id] = handle
                 else:
                     await self._restore_from_atv(entity_id, excl)
 
         self.async_set_updated_data(self.data)
 
-    def _should_restore(self, entity_id: str, excl: dict, all_exclusions: list) -> bool:
+    def _should_restore(self, entity_id: str, excl: dict) -> bool:
         condition = excl.get("restore_condition", RESTORE_ANY_STOPPED)
         if condition == RESTORE_ANY_STOPPED:
             return True
         if condition == RESTORE_ALL_STOPPED:
-            for e in all_exclusions:
-                atv = e.get("atv_entity")
-                if not atv:
-                    continue
+            for atv in _excl_entities(excl):
                 state = self.hass.states.get(atv)
                 if state and state.state == "playing":
                     return False
@@ -304,6 +320,8 @@ class ZoneCoordinator(DataUpdateCoordinator):
         return True
 
     async def _restore_from_atv(self, entity_id: str, excl: dict) -> None:
+        self._atv_restore_handles.pop(entity_id, None)
+
         condition = excl.get("restore_condition", RESTORE_ANY_STOPPED)
         # Re-check occupied condition after delay
         if condition == RESTORE_OCCUPIED and not self._is_occupied():

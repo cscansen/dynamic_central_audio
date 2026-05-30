@@ -8,6 +8,12 @@
 ### Features
 - [ ] Per-source follow-me switch — integration creates `switch.dynamic_central_audio_<system>_<source>_follow_me` for each source; replaces gate_entity/gate_state config fields; defaults ON; RestoreEntity. Coordinator checks switch state before treating source as active. **Note:** current gate_entity field is optional/skippable in v0.1.0 but is effectively required for sources like LR ATV — the per-source switch fixes this by always creating it.
 
+## v0.3.0 — shipped
+
+- [x] Multi-entity ATV exclusions — `atv_entities` multi-select; `all_stopped` checks the rule's own entity list; backward compat with legacy `atv_entity` single-string via `_excl_entities()` helper.
+- [x] ATV restore delay applies to all conditions — `restore_delay_seconds` default changed to 0; always `async_call_later` when > 0; added `_atv_restore_handles` dict to cancel pending restores if ATV resumes mid-delay.
+- [x] Amp switch "optional" label removed.
+
 ## Future / v2+
 
 - [ ] Staircase prewarm: `binary_sensor.stairs_occupied` → pre-activate main_floor + second_floor

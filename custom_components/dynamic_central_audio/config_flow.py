@@ -244,17 +244,17 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_zone_atv(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         if user_input is not None:
-            atv = user_input.get("atv_entity", "")
-            if atv:
+            atvs = user_input.get("atv_entities", [])
+            if atvs:
                 self._atv_exclusions.append({
-                    "atv_entity": atv,
+                    "atv_entities": atvs,
                     "restore_condition": user_input.get("restore_condition", RESTORE_ANY_STOPPED),
-                    "restore_delay_seconds": int(user_input.get("restore_delay_seconds", DEFAULT_RESTORE_DELAY)),
+                    "restore_delay_seconds": int(user_input.get("restore_delay_seconds", 0)),
                     "airplay_exception": user_input.get("airplay_exception", True),
                     "amp_switch": user_input.get("amp_switch") or None,
                 })
 
-            if user_input.get("add_another") and atv:
+            if user_input.get("add_another") and atvs:
                 return await self.async_step_zone_atv()
 
             self._zone_data["atv_exclusions"] = self._atv_exclusions
@@ -268,8 +268,8 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="zone_atv",
             data_schema=vol.Schema({
-                vol.Optional("atv_entity", default=""): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="media_player")
+                vol.Optional("atv_entities", default=[]): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="media_player", multiple=True)
                 ),
                 vol.Optional("restore_condition", default=RESTORE_ANY_STOPPED): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=[
@@ -278,7 +278,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         selector.SelectOptionDict(value=RESTORE_OCCUPIED, label="Occupied (with delay)"),
                     ])
                 ),
-                vol.Optional("restore_delay_seconds", default=DEFAULT_RESTORE_DELAY): selector.NumberSelector(
+                vol.Optional("restore_delay_seconds", default=0): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=1800, step=30, unit_of_measurement="s")
                 ),
                 vol.Optional("airplay_exception", default=True): bool,
@@ -287,7 +287,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ),
                 vol.Optional("add_another", default=False): bool,
             }),
-            description_placeholders={"step_title": "Step 4: ATV Exclusions (optional)"},
+            description_placeholders={"step_title": "Step 4: ATV Exclusions (leave entities blank to skip)"},
         )
 
     # ── Options flows ─────────────────────────────────────────────────────────
@@ -412,25 +412,26 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
         idx = len(self._atv_exclusions)
 
         if user_input is not None:
-            atv = user_input.get("atv_entity", "")
-            if atv:
+            atvs = user_input.get("atv_entities", [])
+            if atvs:
                 self._atv_exclusions.append({
-                    "atv_entity": atv,
+                    "atv_entities": atvs,
                     "restore_condition": user_input.get("restore_condition", RESTORE_ANY_STOPPED),
-                    "restore_delay_seconds": int(user_input.get("restore_delay_seconds", DEFAULT_RESTORE_DELAY)),
+                    "restore_delay_seconds": int(user_input.get("restore_delay_seconds", 0)),
                     "airplay_exception": user_input.get("airplay_exception", True),
                     "amp_switch": user_input.get("amp_switch") or None,
                 })
-            if user_input.get("add_another") and atv:
+            if user_input.get("add_another") and atvs:
                 return await self.async_step_atv()
             return self.async_create_entry(title="", data={**self._zone_data, "atv_exclusions": self._atv_exclusions})
 
         excl = existing[idx] if idx < len(existing) else {}
+        existing_atvs = excl.get("atv_entities") or ([excl["atv_entity"]] if excl.get("atv_entity") else [])
         return self.async_show_form(
             step_id="atv",
             data_schema=vol.Schema({
-                vol.Optional("atv_entity", default=excl.get("atv_entity", "")): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="media_player")
+                vol.Optional("atv_entities", default=existing_atvs): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="media_player", multiple=True)
                 ),
                 vol.Optional("restore_condition", default=excl.get("restore_condition", RESTORE_ANY_STOPPED)): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=[
@@ -439,7 +440,7 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
                         selector.SelectOptionDict(value=RESTORE_OCCUPIED, label="Occupied (with delay)"),
                     ])
                 ),
-                vol.Optional("restore_delay_seconds", default=excl.get("restore_delay_seconds", DEFAULT_RESTORE_DELAY)): selector.NumberSelector(
+                vol.Optional("restore_delay_seconds", default=excl.get("restore_delay_seconds", 0)): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=1800, step=30, unit_of_measurement="s")
                 ),
                 vol.Optional("airplay_exception", default=excl.get("airplay_exception", True)): bool,
