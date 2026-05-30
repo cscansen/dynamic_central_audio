@@ -97,7 +97,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="system",
             data_schema=vol.Schema({
                 vol.Required("system_name"): str,
-                vol.Optional("reference_entity", default=""): selector.EntitySelector(
+                vol.Optional("reference_entity"): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="media_player"),
                 ),
                 vol.Optional("source_off_delay_seconds", default=DEFAULT_SOURCE_OFF_DELAY): selector.NumberSelector(
@@ -320,9 +320,15 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Optional("reference_entity", default=d.get("reference_entity", "")): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="media_player")
-                ),
+                **({
+                    vol.Optional("reference_entity", default=d["reference_entity"]): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="media_player")
+                    )
+                } if d.get("reference_entity") else {
+                    vol.Optional("reference_entity"): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="media_player")
+                    )
+                }),
                 vol.Optional("source_off_delay_seconds", default=d.get("source_off_delay_seconds", DEFAULT_SOURCE_OFF_DELAY)): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=30, max=1800, step=30, unit_of_measurement="s")
                 ),

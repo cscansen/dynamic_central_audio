@@ -14,6 +14,12 @@
 - [x] ATV restore delay applies to all conditions — `restore_delay_seconds` default changed to 0; always `async_call_later` when > 0; added `_atv_restore_handles` dict to cancel pending restores if ATV resumes mid-delay.
 - [x] Amp switch "optional" label removed.
 
+## v0.4.0
+
+- [ ] **App-based exclusion filtering** — per exclusion rule, optional `excluded_apps` list (app_name or app_id strings). If configured, the zone only deactivates when the ATV is playing AND the current `app_name`/`app_id` attribute matches the list. Allows "exclude for Netflix/Plex but not Apple Music." Config: multi-value text field in zone_atv step. Coordinator checks attribute at change time.
+
+- [ ] **App-gated source condition** — per source, optional `required_app` field (app_name or app_id). Source is only considered active if the watcher entity is in the right state AND the current app matches. Allows "follow LR ATV only when Apple TV+ is open, not when Music app is playing locally." Config: optional text field in add_source step. Coordinator checks attribute in `resolve_routing()`.
+
 ## Future / v2+
 
 - [ ] Staircase prewarm: `binary_sensor.stairs_occupied` → pre-activate main_floor + second_floor
