@@ -26,6 +26,23 @@ from .const import (
 )
 
 
+def _app_options_for_entity(hass: HomeAssistant, entity_id: str) -> list:
+    """Return SelectOptionDict list of app_id + app_name from a media_player entity's current state."""
+    if not entity_id:
+        return []
+    state = hass.states.get(entity_id)
+    if not state:
+        return []
+    seen: set[str] = set()
+    options = []
+    for attr in ("app_id", "app_name"):
+        val = state.attributes.get(attr, "")
+        if val and val not in seen:
+            options.append(selector.SelectOptionDict(value=val, label=val))
+            seen.add(val)
+    return options
+
+
 def _source_list_for_entity(hass: HomeAssistant, entity_id: str) -> list[str]:
     """Read source_list from a media_player entity's current state."""
     if not entity_id:
@@ -375,6 +392,9 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
             if source_list else selector.TextSelector()
         )
 
+        # Suggest current app_id / app_name from the entity as selectable options
+        app_options = _app_options_for_entity(self.hass, src.get("app_filter_entity", ""))
+
         return self.async_show_form(
             step_id="edit_source",
             data_schema=vol.Schema({
@@ -398,7 +418,7 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                     )
                 }),
                 vol.Optional("app_ids", default=src.get("app_ids", [])): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=[], custom_value=True, multiple=True)
+                    selector.SelectSelectorConfig(options=app_options, custom_value=True, multiple=True)
                 ),
                 vol.Optional("add_another", default=False): bool,
             }),
