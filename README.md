@@ -103,5 +103,5 @@ volume offset sliders.
 - `select_source` is only called if the input name appears in the zone entity's `source_list`
 - Volume offset is applied on top of the source's base volume and clamped to [0.0, 1.0]
 - Follow-me switch states and volume offsets persist across HA restarts (RestoreEntity)
-- Disabling a zone's follow-me switch schedules an automatic re-enable at 07:00 local time; toggling it back on manually cancels the timer
+- Disabling a zone's follow-me switch schedules an automatic re-enable at 07:00 local time; toggling it back on manually cancels the timer; the timer survives HA restarts and integration reloads
 - ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
