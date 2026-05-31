@@ -394,6 +394,11 @@ class ZoneCoordinator(DataUpdateCoordinator):
         self._zone_active = True
 
     async def _deactivate_zone(self, reason: str) -> None:
+        if self._atv_excluded_by:
+            # Zone is in ATV override — clear the override so zone goes dark regardless of
+            # whether the ATV responds to turn_off (e.g. AirPlay streams ignore it).
+            await self._clear_atv_overrides(reason)
+            return
         if not self._zone_active:
             # Cross-check: if the media player is actually on, we still need to turn it off
             # (handles state-sync loss after reload/restart or ATV path)
@@ -405,6 +410,23 @@ class ZoneCoordinator(DataUpdateCoordinator):
                 return
         async with self._lock:
             await self._deactivate_zone_immediate(reason)
+
+    async def _clear_atv_overrides(self, reason: str) -> None:
+        """Clear ATV override state and turn off amp switches. Used when zone must go dark
+        regardless of ATV state (e.g. occupancy loss) — don't rely on ATV reporting a stop."""
+        self._cancel_all_restore_timers()
+        exclusions = self.config.get("atv_exclusions", [])
+        for entity_id in list(self._atv_excluded_by):
+            excl = next((e for e in exclusions if entity_id in _excl_entities(e)), None)
+            if excl:
+                amp = excl.get("amp_switch")
+                if amp:
+                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": amp})
+        self._atv_excluded_by.clear()
+        _LOGGER.info("%s: ATV override cleared (%s)", self.zone_name, reason)
+        async with self._lock:
+            await self._deactivate_zone_immediate(reason)
+        self.hass.async_create_task(self.async_request_refresh())
 
     async def _deactivate_zone_immediate(self, reason: str) -> None:
         mp = self.config.get("media_player")
