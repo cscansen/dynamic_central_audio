@@ -105,3 +105,34 @@ volume offset sliders.
 - Follow-me switch states and volume offsets persist across HA restarts (RestoreEntity)
 - Disabling a zone's follow-me switch schedules an automatic re-enable at 07:00 local time; toggling it back on manually cancels the timer; the timer survives HA restarts and integration reloads
 - ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
+
+## Changelog
+
+### v0.3.7
+- **Fix:** Occupancy deactivation now reliably clears zones stuck in ATV override. Previously, if `media_player.turn_off` had no effect on the device (e.g. an active AirPlay stream), `_atv_excluded_by` was never cleared and the zone stayed in `atv_override` indefinitely with the amp switch left on. New `_clear_atv_overrides()` path forcibly cancels restore timers, turns off amp switches, and clears the exclusion state without waiting for the device to report a stop.
+
+### v0.3.6
+- **Feat:** Follow-me 07:00 reset timer now survives HA restarts and integration reloads (re-scheduled on startup)
+
+### v0.3.5
+- **Feat:** Per-source follow-me switch — disable individual sources from triggering whole-house follow without removing config
+- **Feat:** Restore delay applies to all restore conditions (not just `occupied`)
+
+### v0.3.4
+- **Feat:** Multi-device ATV exclusions — a single rule can list multiple ATV entities
+- **Feat:** `all_stopped` restore condition — wait until every device in the rule has stopped
+
+### v0.3.3
+- **Feat:** Volume offset `number` entity per zone — persists across restarts, applied on top of source base volume
+- **Feat:** AirPlay exception flag on ATV exclusion rules — AirPlay from the same device does not trigger override
+
+### v0.3.2
+- **Feat:** Amp switch support in ATV exclusion rules — turn on/off an external amp when local device takes over
+- **Fix:** Restore delay timer now cancelled if device resumes playing before delay expires
+
+### v0.3.1
+- **Feat:** ATV exclusion with restore conditions (`any_stopped`, `occupied`) and configurable restore delay
+- **Feat:** `reasoning` attribute on all status sensors
+
+### v0.3.0
+- Initial HACS-installable release: multi-zone follow-me, per-zone follow-me switch, occupancy gating, source priority
