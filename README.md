@@ -12,7 +12,7 @@ a single, structured integration.
 - **Generic media player interface** — works with HTD, Russound, receivers, or any HA media player
 - **Dynamic source discovery** — reads `source_list` from a zone entity at setup time to populate input dropdowns
 - **Per-source follow-me switch** — enable/disable individual sources from the HA UI without editing config
-- **Per-zone follow-me switch** — pull a room out of the rotation instantly without touching config
+- **Per-zone follow-me switch** — pull a room out of the rotation instantly; auto-re-enables at 07:00
 - **Multi-device ATV exclusions** — one or more local streaming devices can override whole-house follow per zone, with configurable restore conditions and delay
 - **Restore delay for all conditions** — configurable delay before a zone re-follows after a device stops
 - **Amp switch support** — toggle an external amp when a local device takes over
@@ -103,3 +103,5 @@ volume offset sliders.
 - `select_source` is only called if the input name appears in the zone entity's `source_list`
 - Volume offset is applied on top of the source's base volume and clamped to [0.0, 1.0]
 - Follow-me switch states and volume offsets persist across HA restarts (RestoreEntity)
+- Disabling a zone's follow-me switch schedules an automatic re-enable at 07:00 local time; toggling it back on manually cancels the timer
+- ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
