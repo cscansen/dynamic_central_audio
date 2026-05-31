@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -175,6 +176,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
         self._occ_deactivate_handle = None
         self._source_deactivate_handle = None
 
+        # Follow-me 7am auto-reset handle
+        self._follow_me_reset_handle: Optional[Any] = None
+
         self._lock = asyncio.Lock()
 
     # ── System lookup ─────────────────────────────────────────────────────────
@@ -266,6 +270,29 @@ class ZoneCoordinator(DataUpdateCoordinator):
             cancel()
         self._atv_restore_handles.clear()
 
+    def _cancel_follow_me_reset(self) -> None:
+        if self._follow_me_reset_handle:
+            self._follow_me_reset_handle()
+            self._follow_me_reset_handle = None
+
+    def _schedule_follow_me_reset(self) -> None:
+        self._cancel_follow_me_reset()
+        now = dt_util.now()
+        reset_time = now.replace(hour=7, minute=0, second=0, microsecond=0)
+        if reset_time <= now:
+            reset_time = reset_time + timedelta(days=1)
+        delay = (reset_time - now).total_seconds()
+        self._follow_me_reset_handle = async_call_later(
+            self.hass, delay,
+            lambda _: self.hass.async_create_task(self._async_reset_follow_me()),
+        )
+        _LOGGER.info("%s: follow-me will auto-re-enable at 07:00 (in %.0fs)", self.zone_name, delay)
+
+    async def _async_reset_follow_me(self) -> None:
+        self._follow_me_reset_handle = None
+        _LOGGER.info("%s: 07:00 reset — re-enabling follow-me", self.zone_name)
+        self.set_follow_me(True)
+
     # ── ATV exclusion ─────────────────────────────────────────────────────────
 
     async def _process_atv_change(self, entity_id: str, new_state_str: str) -> None:
@@ -287,7 +314,7 @@ class ZoneCoordinator(DataUpdateCoordinator):
                 if amp:
                     await self.hass.services.async_call("switch", "turn_on", {"entity_id": amp})
 
-        elif new_state_str in ("idle", "off", "paused"):
+        elif new_state_str in ("idle", "off", "paused", "standby"):
             if entity_id not in self._atv_excluded_by:
                 return
             if self._should_restore(entity_id, excl):
@@ -368,7 +395,14 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
     async def _deactivate_zone(self, reason: str) -> None:
         if not self._zone_active:
-            return
+            # Cross-check: if the media player is actually on, we still need to turn it off
+            # (handles state-sync loss after reload/restart or ATV path)
+            mp = self.config.get("media_player")
+            if not mp:
+                return
+            state = self.hass.states.get(mp)
+            if not state or state.state in ("off", "unavailable", "unknown"):
+                return
         async with self._lock:
             await self._deactivate_zone_immediate(reason)
 
@@ -457,6 +491,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
     def set_follow_me(self, enabled: bool) -> None:
         self._follow_me = enabled
+        if enabled:
+            self._cancel_follow_me_reset()
+        else:
+            self._schedule_follow_me_reset()
         self.hass.async_create_task(self.async_request_refresh())
 
     def set_volume_offset(self, offset: float) -> None:

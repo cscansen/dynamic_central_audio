@@ -104,6 +104,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if isinstance(coord, ZoneCoordinator):
         coord._cancel_all_deactivate_timers()
         coord._cancel_all_restore_timers()
+        coord._cancel_follow_me_reset()
 
     if await hass.config_entries.async_unload_platforms(entry, platforms):
         hass.data[DOMAIN].pop(entry.entry_id, None)
