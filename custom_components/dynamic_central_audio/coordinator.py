@@ -302,6 +302,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
             return
 
         if new_state_str == "playing":
+            if not self._is_occupied():
+                _LOGGER.debug("%s: ATV %s playing but zone unoccupied — skipping override", self.zone_name, entity_id)
+                return
+
             # Cancel any pending restore for this entity before re-excluding
             if entity_id in self._atv_restore_handles:
                 self._atv_restore_handles.pop(entity_id)()
