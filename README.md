@@ -116,6 +116,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.11
+- **Fix:** ATV playing while zone is unoccupied no longer causes both central audio and ATV to play simultaneously when someone enters. Override is now always tracked immediately; amp and zone player actions are deferred until occupancy. When the room empties, the exclusion is only cleared for ATVs that have stopped — streaming ATVs keep their override so the amp re-enables correctly on next entry.
+
 ### v0.3.10
 - **Feat:** Per-source app filter — optionally restrict a source to only trigger follow-me when a specified media player (e.g. an Apple TV) is showing certain apps. Configure an app filter entity and one or more app names or bundle IDs; leave blank to follow on any playback. App state changes trigger immediate re-evaluation.
 
