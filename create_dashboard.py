@@ -146,8 +146,35 @@ def system_card(system_slug: str) -> dict:
     }
 
 
+NOW_PLAYING_SOURCES = [
+    # (watcher_entity, active_state, label)
+    ("media_player.living_room_apple_tv", "playing", "Apple TV"),
+    ("media_player.airplay_downstairs",   "playing", "AirPlay"),
+]
+
+
+def now_playing_cards() -> list[dict]:
+    """Conditional media-control cards for each source — only shown when active."""
+    return [
+        {
+            "type": "conditional",
+            "conditions": [{"entity": entity, "state": state}],
+            "card": {
+                "type": "media-control",
+                "entity": entity,
+                "name": label,
+            },
+        }
+        for entity, state, label in NOW_PLAYING_SOURCES
+    ]
+
+
 def build_dashboard(system_slugs: list[str], zone_slugs: list[str]) -> dict:
     cards = [{"type": "heading", "heading": "Dynamic Central Audio", "heading_style": "title"}]
+
+    # Now Playing section — shows cover art for whichever source is active
+    cards.append({"type": "heading", "heading": "Now Playing", "heading_style": "subtitle"})
+    cards.extend(now_playing_cards())
 
     for slug in system_slugs:
         cards.append(system_card(slug))
