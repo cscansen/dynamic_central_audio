@@ -205,17 +205,17 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_zone_player(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         if user_input is not None:
-            self._zone_data["media_player"] = user_input["media_player"]
+            self._zone_data["media_player"] = user_input.get("media_player") or ""
             return await self.async_step_zone_sensors()
 
         return self.async_show_form(
             step_id="zone_player",
             data_schema=vol.Schema({
-                vol.Required("media_player"): selector.EntitySelector(
+                vol.Optional("media_player"): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="media_player")
                 ),
             }),
-            description_placeholders={"step_title": "Step 2: Media Player"},
+            description_placeholders={"step_title": "Step 2: Media Player (leave blank for amp-only zones)"},
         )
 
     # ── Zone: step 3 — occupancy + off delay ─────────────────────────────────
@@ -395,7 +395,7 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
 
         if user_input is not None:
             self._zone_data = {
-                "media_player": user_input["media_player"],
+                "media_player": user_input.get("media_player") or "",
                 "occupancy_sensors": user_input.get("occupancy_sensors", []),
                 "off_delay_seconds": int(user_input.get("off_delay_seconds", DEFAULT_OFF_DELAY)),
             }
@@ -405,7 +405,7 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
-                vol.Required("media_player", default=d.get("media_player", "")): selector.EntitySelector(
+                vol.Optional("media_player", default=d.get("media_player") or ""): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="media_player")
                 ),
                 vol.Optional("occupancy_sensors", default=occ): selector.EntitySelector(

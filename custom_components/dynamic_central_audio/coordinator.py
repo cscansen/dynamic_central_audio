@@ -312,8 +312,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
             self._atv_excluded_by.add(entity_id)
             _LOGGER.info("%s: ATV override by %s", self.zone_name, entity_id)
+            mp = self.config.get("media_player")
             async with self._lock:
-                await self._deactivate_zone_immediate(f"ATV override: {entity_id}")
+                if mp:
+                    await self._deactivate_zone_immediate(f"ATV override: {entity_id}")
                 amp = excl.get("amp_switch")
                 if amp:
                     await self.hass.services.async_call("switch", "turn_on", {"entity_id": amp})
@@ -428,8 +430,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
                     await self.hass.services.async_call("switch", "turn_off", {"entity_id": amp})
         self._atv_excluded_by.clear()
         _LOGGER.info("%s: ATV override cleared (%s)", self.zone_name, reason)
-        async with self._lock:
-            await self._deactivate_zone_immediate(reason)
+        mp = self.config.get("media_player")
+        if mp:
+            async with self._lock:
+                await self._deactivate_zone_immediate(reason)
         self.hass.async_create_task(self.async_request_refresh())
 
     async def _deactivate_zone_immediate(self, reason: str) -> None:
@@ -487,6 +491,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
         if self._atv_excluded_by:
             names = ", ".join(self._atv_excluded_by)
             return {"status": f"{STATUS_ATV_OVERRIDE}: {names}", "active": self._zone_active, "routing_mode": ROUTING_NONE}
+
+        if not self.config.get("media_player"):
+            # Amp-only zone — no central audio routing; ATV exclusions handle the amp
+            return {"status": STATUS_IDLE, "active": False, "routing_mode": ROUTING_NONE}
 
         active_source = system.active_source
         occupied = self._is_occupied()

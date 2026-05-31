@@ -53,10 +53,16 @@ Toggle it off to stop that source from triggering whole-house follow without rem
 For each room:
 - **Zone name** — display name (e.g. "Main Floor")
 - **Audio system** — which system this zone belongs to
-- **Media player entity** — the zone's media_player (receives `turn_on`, `select_source`, `volume_set`)
+- **Media player entity** — the zone's media_player (receives `turn_on`, `select_source`, `volume_set`). **Leave blank for amp-only zones** — the zone will not route central audio but ATV exclusions will still manage the amp switch based on occupancy and local playback.
 - **Occupancy sensors** — one or more binary_sensors; zone activates when any is `on` (leave blank = always occupied)
 - **Off delay** — seconds to wait after room empties before turning off (default 600s)
 - **ATV exclusions** — optional: one or more local streaming devices that override whole-house follow
+
+#### Amp-only zones
+
+If your room has a local streaming device (e.g. Apple TV) driving a dedicated amplifier with no whole-house zone to cut over, configure the zone with no media player and an ATV exclusion pointing at the device with the amp switch set. The integration will:
+- Turn the amp on when the device starts playing and the room is occupied
+- Turn the amp off when the device stops, or when the room empties (after the off delay)
 
 ## Entities
 
@@ -108,7 +114,10 @@ volume offset sliders.
 
 ## Changelog
 
-### v0.3.7
+### v0.3.9
+- **Feat:** Amp-only zones — media player is now optional. Leave it blank to create a zone that manages only an amp switch via ATV exclusions, with no central audio routing. Useful when a local streaming device drives a dedicated amplifier with no whole-house zone to cut over.
+
+### v0.3.8
 - **Fix:** Occupancy deactivation now reliably clears zones stuck in ATV override. Previously, if `media_player.turn_off` had no effect on the device (e.g. an active AirPlay stream), `_atv_excluded_by` was never cleared and the zone stayed in `atv_override` indefinitely with the amp switch left on. New `_clear_atv_overrides()` path forcibly cancels restore timers, turns off amp switches, and clears the exclusion state without waiting for the device to report a stop.
 
 ### v0.3.6
