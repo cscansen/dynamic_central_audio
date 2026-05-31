@@ -93,7 +93,10 @@ class ZoneFollowMeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         if (last := await self.async_get_last_state()) is not None:
-            self.coordinator._follow_me = last.state == "on"
+            enabled = last.state == "on"
+            self.coordinator._follow_me = enabled
+            if not enabled:
+                self.coordinator._schedule_follow_me_reset()
 
     @property
     def is_on(self) -> bool:
