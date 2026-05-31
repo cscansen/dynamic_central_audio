@@ -44,6 +44,8 @@ For each follow-me source:
 - **Active state** — the state that means "playing" (default: `playing`)
 - **Base volume** — volume applied when this source is active (0.0–1.0)
 - **Priority** — lower number wins when multiple sources are active simultaneously
+- **App filter entity** *(optional)* — a media_player entity (typically an Apple TV) to check for active app
+- **App filter list** *(optional)* — one or more app names or bundle IDs (e.g. `Music`, `Spotify`, `com.apple.TVMusic`); if set, the source only triggers follow-me when the specified entity is showing one of these apps. Leave blank to follow on any playback.
 
 Each source gets a `switch.<system>_<source>_follow_me` entity created automatically.
 Toggle it off to stop that source from triggering whole-house follow without removing the source config.
@@ -113,6 +115,9 @@ volume offset sliders.
 - ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
 
 ## Changelog
+
+### v0.3.10
+- **Feat:** Per-source app filter — optionally restrict a source to only trigger follow-me when a specified media player (e.g. an Apple TV) is showing certain apps. Configure an app filter entity and one or more app names or bundle IDs; leave blank to follow on any playback. App state changes trigger immediate re-evaluation.
 
 ### v0.3.9
 - **Feat:** Amp-only zones — media player is now optional. Leave it blank to create a zone that manages only an amp switch via ATV exclusions, with no central audio routing. Useful when a local streaming device drives a dedicated amplifier with no whole-house zone to cut over.

@@ -83,6 +83,23 @@ class SystemCoordinator(DataUpdateCoordinator):
             state = self.hass.states.get(watcher)
             if not state or state.state != active_state:
                 continue
+            # Optional app filter — only route if the specified entity is showing an allowed app
+            app_filter_entity = source.get("app_filter_entity")
+            app_ids = source.get("app_ids", [])
+            if app_filter_entity and app_ids:
+                atv_state = self.hass.states.get(app_filter_entity)
+                if atv_state:
+                    current_app_id = atv_state.attributes.get("app_id", "")
+                    current_app_name = atv_state.attributes.get("app_name", "")
+                    if not any(
+                        f.lower() in (current_app_id.lower(), current_app_name.lower())
+                        for f in app_ids
+                    ):
+                        _LOGGER.debug(
+                            "%s: source %s skipped — app %s/%s not in filter %s",
+                            self.system_name, display_name, current_app_id, current_app_name, app_ids,
+                        )
+                        continue
             return source
         return None
 

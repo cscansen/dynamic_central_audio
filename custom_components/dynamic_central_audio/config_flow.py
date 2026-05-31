@@ -122,6 +122,8 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "active_state": user_input.get("active_state", DEFAULT_ACTIVE_STATE),
                     "base_volume": float(user_input.get("base_volume", DEFAULT_BASE_VOLUME)),
                     "priority": int(user_input.get("priority", DEFAULT_PRIORITY)),
+                    "app_filter_entity": user_input.get("app_filter_entity") or "",
+                    "app_ids": user_input.get("app_ids", []),
                 })
 
             if user_input.get("add_another") and watcher:
@@ -160,11 +162,17 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("priority", default=source_num): selector.NumberSelector(
                     selector.NumberSelectorConfig(min=0, max=20, step=1)
                 ),
+                vol.Optional("app_filter_entity"): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="media_player")
+                ),
+                vol.Optional("app_ids", default=[]): selector.SelectSelector(
+                    selector.SelectSelectorConfig(custom_value=True, multiple=True)
+                ),
                 vol.Optional("add_another", default=False): bool,
             }),
             description_placeholders={
                 "step_title": f"Source {source_num}",
-                "hint": "Leave watcher entity blank to finish without adding a source.",
+                "hint": "Leave watcher entity blank to finish without adding a source. App filter: optionally pick an ATV and list app names (e.g. Music, Spotify) — leave blank to follow on any app.",
             },
         )
 
@@ -346,6 +354,8 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                     "active_state": user_input.get("active_state", DEFAULT_ACTIVE_STATE),
                     "base_volume": float(user_input.get("base_volume", DEFAULT_BASE_VOLUME)),
                     "priority": int(user_input.get("priority", DEFAULT_PRIORITY)),
+                    "app_filter_entity": user_input.get("app_filter_entity") or "",
+                    "app_ids": user_input.get("app_ids", []),
                 })
             if user_input.get("add_another") and watcher:
                 return await self.async_step_edit_source()
@@ -373,6 +383,18 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("active_state", default=src.get("active_state", DEFAULT_ACTIVE_STATE)): str,
                 vol.Optional("base_volume", default=src.get("base_volume", DEFAULT_BASE_VOLUME)): selector.NumberSelector(selector.NumberSelectorConfig(min=0.0, max=1.0, step=0.05)),
                 vol.Optional("priority", default=src.get("priority", DEFAULT_PRIORITY)): selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=20, step=1)),
+                **({
+                    vol.Optional("app_filter_entity", default=src["app_filter_entity"]): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="media_player")
+                    )
+                } if src.get("app_filter_entity") else {
+                    vol.Optional("app_filter_entity"): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="media_player")
+                    )
+                }),
+                vol.Optional("app_ids", default=src.get("app_ids", [])): selector.SelectSelector(
+                    selector.SelectSelectorConfig(custom_value=True, multiple=True)
+                ),
                 vol.Optional("add_another", default=False): bool,
             }),
         )
