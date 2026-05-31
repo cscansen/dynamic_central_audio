@@ -224,6 +224,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
             return
         if new_state.state == "on":
             self._cancel_occ_deactivate()
+            if self._atv_excluded_by:
+                # ATV was playing while zone was empty — activate amp now that someone entered
+                self.hass.async_create_task(self._activate_atv_overrides())
             self.hass.async_create_task(self.async_request_refresh())
         else:
             if not self._is_occupied():
@@ -319,23 +322,23 @@ class ZoneCoordinator(DataUpdateCoordinator):
             return
 
         if new_state_str == "playing":
-            if not self._is_occupied():
-                _LOGGER.debug("%s: ATV %s playing but zone unoccupied — skipping override", self.zone_name, entity_id)
-                return
-
             # Cancel any pending restore for this entity before re-excluding
             if entity_id in self._atv_restore_handles:
                 self._atv_restore_handles.pop(entity_id)()
 
             self._atv_excluded_by.add(entity_id)
             _LOGGER.info("%s: ATV override by %s", self.zone_name, entity_id)
-            mp = self.config.get("media_player")
-            async with self._lock:
-                if mp:
-                    await self._deactivate_zone_immediate(f"ATV override: {entity_id}")
-                amp = excl.get("amp_switch")
-                if amp:
-                    await self.hass.services.async_call("switch", "turn_on", {"entity_id": amp})
+
+            if self._is_occupied():
+                mp = self.config.get("media_player")
+                async with self._lock:
+                    if mp:
+                        await self._deactivate_zone_immediate(f"ATV override: {entity_id}")
+                    amp = excl.get("amp_switch")
+                    if amp:
+                        await self.hass.services.async_call("switch", "turn_on", {"entity_id": amp})
+            else:
+                _LOGGER.debug("%s: ATV %s override tracked; amp/zone deferred until occupancy", self.zone_name, entity_id)
 
         elif new_state_str in ("idle", "off", "paused", "standby"):
             if entity_id not in self._atv_excluded_by:
@@ -435,8 +438,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
             await self._deactivate_zone_immediate(reason)
 
     async def _clear_atv_overrides(self, reason: str) -> None:
-        """Clear ATV override state and turn off amp switches. Used when zone must go dark
-        regardless of ATV state (e.g. occupancy loss) — don't rely on ATV reporting a stop."""
+        """Turn off amp and zone when room empties. Only clears _atv_excluded_by for ATVs that
+        are no longer playing — if still playing, keeps the override so the amp re-enables on
+        next entry instead of letting central audio bleed back in."""
         self._cancel_all_restore_timers()
         exclusions = self.config.get("atv_exclusions", [])
         for entity_id in list(self._atv_excluded_by):
@@ -445,13 +449,31 @@ class ZoneCoordinator(DataUpdateCoordinator):
                 amp = excl.get("amp_switch")
                 if amp:
                     await self.hass.services.async_call("switch", "turn_off", {"entity_id": amp})
-        self._atv_excluded_by.clear()
-        _LOGGER.info("%s: ATV override cleared (%s)", self.zone_name, reason)
+            atv_state = self.hass.states.get(entity_id)
+            if not atv_state or atv_state.state != "playing":
+                self._atv_excluded_by.discard(entity_id)
+        _LOGGER.info("%s: ATV amp off (%s); still tracking: %s", self.zone_name, reason, self._atv_excluded_by)
         mp = self.config.get("media_player")
         if mp:
             async with self._lock:
                 await self._deactivate_zone_immediate(reason)
         self.hass.async_create_task(self.async_request_refresh())
+
+    async def _activate_atv_overrides(self) -> None:
+        """Called when zone becomes occupied while ATV overrides are already active.
+        Deactivates central audio and powers amp switches on."""
+        exclusions = self.config.get("atv_exclusions", [])
+        mp = self.config.get("media_player")
+        async with self._lock:
+            if mp and self._zone_active:
+                await self._deactivate_zone_immediate("ATV override active on entry")
+            for entity_id in list(self._atv_excluded_by):
+                excl = next((e for e in exclusions if entity_id in _excl_entities(e)), None)
+                if excl:
+                    amp = excl.get("amp_switch")
+                    if amp:
+                        await self.hass.services.async_call("switch", "turn_on", {"entity_id": amp})
+        _LOGGER.info("%s: ATV override amp switches activated on entry", self.zone_name)
 
     async def _deactivate_zone_immediate(self, reason: str) -> None:
         mp = self.config.get("media_player")
