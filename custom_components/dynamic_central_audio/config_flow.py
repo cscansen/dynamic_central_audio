@@ -166,7 +166,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     selector.EntitySelectorConfig(domain="media_player")
                 ),
                 vol.Optional("app_ids", default=[]): selector.SelectSelector(
-                    selector.SelectSelectorConfig(custom_value=True, multiple=True)
+                    selector.SelectSelectorConfig(options=[], custom_value=True, multiple=True)
                 ),
                 vol.Optional("add_another", default=False): bool,
             }),
@@ -316,12 +316,17 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
         self._entry = entry
         self._sources: List[dict] = []
         self._ref_entity: str = ""
+        self._system_opts: Dict[str, Any] = {}
 
     async def async_step_init(self, user_input=None) -> FlowResult:
         d = {**self._entry.data, **self._entry.options}
 
         if user_input is not None:
             self._ref_entity = user_input.get("reference_entity", "")
+            self._system_opts = {
+                "reference_entity": self._ref_entity,
+                "source_off_delay_seconds": int(user_input.get("source_off_delay_seconds", DEFAULT_SOURCE_OFF_DELAY)),
+            }
             self._sources = []
             return await self.async_step_edit_source()
 
@@ -359,7 +364,7 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 })
             if user_input.get("add_another") and watcher:
                 return await self.async_step_edit_source()
-            return self.async_create_entry(title="", data={"sources": self._sources})
+            return self.async_create_entry(title="", data={**self._system_opts, "sources": self._sources})
 
         source_list = _source_list_for_entity(self.hass, self._ref_entity)
         existing = self._entry.data.get("sources", self._entry.options.get("sources", []))
@@ -393,7 +398,7 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                     )
                 }),
                 vol.Optional("app_ids", default=src.get("app_ids", [])): selector.SelectSelector(
-                    selector.SelectSelectorConfig(custom_value=True, multiple=True)
+                    selector.SelectSelectorConfig(options=[], custom_value=True, multiple=True)
                 ),
                 vol.Optional("add_another", default=False): bool,
             }),

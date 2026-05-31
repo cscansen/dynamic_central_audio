@@ -116,6 +116,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.12
+- **Fix:** All `async_call_later` timer callbacks now use `@callback`-decorated methods instead of bare lambdas. HA 2025.x+ raises `RuntimeError` on plain lambda callbacks and silently drops the scheduled task, causing occupancy deactivation timers, source-stop timers, follow-me reset timers, and ATV restore-delay timers to never fire.
+
 ### v0.3.11
 - **Fix:** ATV playing while zone is unoccupied no longer causes both central audio and ATV to play simultaneously when someone enters. Override is now always tracked immediately; amp and zone player actions are deferred until occupancy. When the room empties, the exclusion is only cleared for ATVs that have stopped — streaming ATVs keep their override so the amp re-enables correctly on next entry.
 

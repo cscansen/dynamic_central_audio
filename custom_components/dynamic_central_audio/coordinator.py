@@ -241,23 +241,28 @@ class ZoneCoordinator(DataUpdateCoordinator):
             return
         self.hass.async_create_task(self._process_atv_change(entity_id, new_state.state))
 
+    @callback
     def on_source_changed(self) -> None:
         """Called by system coordinator when active source changes."""
         self._cancel_source_deactivate()
         self.hass.async_create_task(self.async_request_refresh())
 
+    @callback
     def on_source_stopped(self) -> None:
         """Called by system coordinator when source stops."""
         self._schedule_source_deactivate()
 
     # ── Deactivation timers ───────────────────────────────────────────────────
 
+    @callback
+    def _occ_deactivate_cb(self, _now) -> None:
+        self.hass.async_create_task(self._deactivate_zone("unoccupied"))
+
     def _schedule_occ_deactivate(self) -> None:
         delay = int(self.config.get("off_delay_seconds", DEFAULT_OFF_DELAY))
         self._cancel_occ_deactivate()
         self._occ_deactivate_handle = async_call_later(
-            self.hass, delay,
-            lambda _: self.hass.async_create_task(self._deactivate_zone("unoccupied")),
+            self.hass, delay, self._occ_deactivate_cb,
         )
         _LOGGER.debug("%s: scheduled deactivation in %ds (unoccupied)", self.zone_name, delay)
 
@@ -266,13 +271,16 @@ class ZoneCoordinator(DataUpdateCoordinator):
             self._occ_deactivate_handle()
             self._occ_deactivate_handle = None
 
+    @callback
+    def _source_deactivate_cb(self, _now) -> None:
+        self.hass.async_create_task(self._deactivate_zone("no active source"))
+
     def _schedule_source_deactivate(self) -> None:
         system = self.get_system_coordinator()
         delay = int(system.config.get("source_off_delay_seconds", DEFAULT_SOURCE_OFF_DELAY)) if system else DEFAULT_SOURCE_OFF_DELAY
         self._cancel_source_deactivate()
         self._source_deactivate_handle = async_call_later(
-            self.hass, delay,
-            lambda _: self.hass.async_create_task(self._deactivate_zone("no active source")),
+            self.hass, delay, self._source_deactivate_cb,
         )
         _LOGGER.debug("%s: scheduled deactivation in %ds (source stopped)", self.zone_name, delay)
 
@@ -295,6 +303,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
             self._follow_me_reset_handle()
             self._follow_me_reset_handle = None
 
+    @callback
+    def _follow_me_reset_cb(self, _now) -> None:
+        self.hass.async_create_task(self._async_reset_follow_me())
+
     def _schedule_follow_me_reset(self) -> None:
         self._cancel_follow_me_reset()
         now = dt_util.now()
@@ -303,8 +315,7 @@ class ZoneCoordinator(DataUpdateCoordinator):
             reset_time = reset_time + timedelta(days=1)
         delay = (reset_time - now).total_seconds()
         self._follow_me_reset_handle = async_call_later(
-            self.hass, delay,
-            lambda _: self.hass.async_create_task(self._async_reset_follow_me()),
+            self.hass, delay, self._follow_me_reset_cb,
         )
         _LOGGER.info("%s: follow-me will auto-re-enable at 07:00 (in %.0fs)", self.zone_name, delay)
 
@@ -312,6 +323,12 @@ class ZoneCoordinator(DataUpdateCoordinator):
         self._follow_me_reset_handle = None
         _LOGGER.info("%s: 07:00 reset — re-enabling follow-me", self.zone_name)
         self.set_follow_me(True)
+
+    def _make_restore_cb(self, entity_id: str, excl: dict):
+        @callback
+        def _cb(_now) -> None:
+            self.hass.async_create_task(self._restore_from_atv(entity_id, excl))
+        return _cb
 
     # ── ATV exclusion ─────────────────────────────────────────────────────────
 
@@ -348,9 +365,7 @@ class ZoneCoordinator(DataUpdateCoordinator):
                 if restore_delay > 0:
                     handle = async_call_later(
                         self.hass, restore_delay,
-                        lambda _, eid=entity_id, e=excl: self.hass.async_create_task(
-                            self._restore_from_atv(eid, e)
-                        ),
+                        self._make_restore_cb(entity_id, excl),
                     )
                     self._atv_restore_handles[entity_id] = handle
                 else:
