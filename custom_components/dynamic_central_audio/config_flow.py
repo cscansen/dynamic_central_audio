@@ -277,6 +277,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "restore_delay_seconds": int(user_input.get("restore_delay_seconds", 0)),
                     "airplay_exception": user_input.get("airplay_exception", True),
                     "amp_switch": user_input.get("amp_switch") or None,
+                    "bypass_app_ids": user_input.get("bypass_app_ids", []),
                 })
 
             if user_input.get("add_another") and atvs:
@@ -309,6 +310,9 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("airplay_exception", default=True): bool,
                 vol.Optional("amp_switch"): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="switch")
+                ),
+                vol.Optional("bypass_app_ids", default=[]): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=[], custom_value=True, multiple=True)
                 ),
                 vol.Optional("add_another", default=False): bool,
             }),
@@ -477,6 +481,7 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
                     "restore_delay_seconds": int(user_input.get("restore_delay_seconds", 0)),
                     "airplay_exception": user_input.get("airplay_exception", True),
                     "amp_switch": user_input.get("amp_switch") or None,
+                    "bypass_app_ids": user_input.get("bypass_app_ids", []),
                 })
             if user_input.get("add_another") and atvs:
                 return await self.async_step_atv()
@@ -484,6 +489,16 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
 
         excl = existing[idx] if idx < len(existing) else {}
         existing_atvs = excl.get("atv_entities") or ([excl["atv_entity"]] if excl.get("atv_entity") else [])
+
+        # Pre-populate bypass app options from current state of each ATV entity
+        bypass_options: list = []
+        seen_bypass: set[str] = set()
+        for atv_eid in existing_atvs:
+            for opt in _app_options_for_entity(self.hass, atv_eid):
+                if opt["value"] not in seen_bypass:
+                    bypass_options.append(opt)
+                    seen_bypass.add(opt["value"])
+
         return self.async_show_form(
             step_id="atv",
             data_schema=vol.Schema({
@@ -510,6 +525,9 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
                         selector.EntitySelectorConfig(domain="switch")
                     )
                 }),
+                vol.Optional("bypass_app_ids", default=excl.get("bypass_app_ids", [])): selector.SelectSelector(
+                    selector.SelectSelectorConfig(options=bypass_options, custom_value=True, multiple=True)
+                ),
                 vol.Optional("add_another", default=False): bool,
             }),
         )

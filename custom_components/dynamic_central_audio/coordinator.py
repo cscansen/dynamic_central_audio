@@ -339,6 +339,24 @@ class ZoneCoordinator(DataUpdateCoordinator):
             return
 
         if new_state_str == "playing":
+            # Check if the current app is in the bypass list — if so, clear any
+            # existing exclusion and let central audio route normally
+            bypass_app_ids = excl.get("bypass_app_ids", [])
+            if bypass_app_ids:
+                atv_state = self.hass.states.get(entity_id)
+                if atv_state:
+                    current_app_id = (atv_state.attributes.get("app_id") or "").lower()
+                    current_app_name = (atv_state.attributes.get("app_name") or "").lower()
+                    if any(f.lower() in (current_app_id, current_app_name) for f in bypass_app_ids):
+                        _LOGGER.info(
+                            "%s: ATV %s playing bypassed app (%s/%s) — exclusion skipped",
+                            self.zone_name, entity_id, current_app_id, current_app_name,
+                        )
+                        if entity_id in self._atv_excluded_by:
+                            self._atv_excluded_by.discard(entity_id)
+                            self.hass.async_create_task(self.async_request_refresh())
+                        return
+
             # Cancel any pending restore for this entity before re-excluding
             if entity_id in self._atv_restore_handles:
                 self._atv_restore_handles.pop(entity_id)()

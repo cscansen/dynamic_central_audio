@@ -116,6 +116,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.14
+- **Feat:** ATV exclusion rules now support `bypass_app_ids` — when the ATV is playing an app in this list (matched against `app_id` or `app_name`), the exclusion is skipped and central audio routes normally. Combine with a source-level app filter to make the Apple TV follow-me for music but take over local audio for video.
+
 ### v0.3.13
 - **Feat:** App filter list now pre-populates with the entity's current `app_id` and `app_name` when editing an existing source — no need to look up bundle IDs manually
 - **Fix:** `source_off_delay_seconds` no longer silently dropped when saving system options
