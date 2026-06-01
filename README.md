@@ -14,7 +14,10 @@ a single, structured integration.
 - **Per-source follow-me switch** — enable/disable individual sources from the HA UI without editing config
 - **Per-zone follow-me switch** — pull a room out of the rotation instantly; auto-re-enables at 07:00
 - **Multi-device ATV exclusions** — one or more local streaming devices can override whole-house follow per zone, with configurable restore conditions and delay
-- **Restore delay for all conditions** — configurable delay before a zone re-follows after a device stops
+- **App-aware exclusions** — optionally bypass the ATV exclusion for specific apps (e.g. let Apple Music follow-me while video still takes over local audio)
+- **Per-source app filter** — restrict a source to only trigger follow-me when a specific app is active (e.g. Apple TV source only routes when Apple Music is playing)
+- **Amp-only zones** — manage a dedicated amp switch without a whole-house zone; useful when a local device drives its own amplifier
+- **Restore delay for all conditions** — configurable delay before a zone re-follows after a device stops or pauses
 - **Amp switch support** — toggle an external amp when a local device takes over
 - **Volume management** — per-source base volume + per-zone offset slider (persists across restarts)
 - **Reasoning attribute** — every status sensor exposes a `reasoning` attribute explaining the full decision
@@ -58,13 +61,28 @@ For each room:
 - **Media player entity** — the zone's media_player (receives `turn_on`, `select_source`, `volume_set`). **Leave blank for amp-only zones** — the zone will not route central audio but ATV exclusions will still manage the amp switch based on occupancy and local playback.
 - **Occupancy sensors** — one or more binary_sensors; zone activates when any is `on` (leave blank = always occupied)
 - **Off delay** — seconds to wait after room empties before turning off (default 600s)
-- **ATV exclusions** — optional: one or more local streaming devices that override whole-house follow
+- **ATV exclusions** — optional: one or more local streaming devices that override whole-house follow. Each exclusion rule has:
+  - **ATV entities** — one or more media_player entities to watch
+  - **Restore condition** — `any_stopped`, `all_stopped`, or `occupied`
+  - **Restore delay** — seconds to wait before re-following (pausing also starts the timer)
+  - **AirPlay exception** — don't trigger the exclusion when AirPlay is the active source on the device
+  - **Amp switch** — optional switch entity to turn on/off alongside the exclusion
+  - **Bypass app IDs** — optional list of app names or bundle IDs; when the ATV is showing one of these apps, the exclusion is skipped entirely and central audio routes normally
 
 #### Amp-only zones
 
 If your room has a local streaming device (e.g. Apple TV) driving a dedicated amplifier with no whole-house zone to cut over, configure the zone with no media player and an ATV exclusion pointing at the device with the amp switch set. The integration will:
 - Turn the amp on when the device starts playing and the room is occupied
-- Turn the amp off when the device stops, or when the room empties (after the off delay)
+- Turn the amp off when the device stops or pauses (after restore delay), or when the room empties (after off delay)
+
+#### Apple TV: music vs. video
+
+A common pattern is an Apple TV that should trigger whole-house follow-me when playing music but take over local audio when playing video. Configure both layers:
+
+1. **Source (system level)** — add the Apple TV as a source with an app filter: set `app_filter_entity` to the ATV and `app_ids` to `com.apple.TVMusic` (and/or `Spotify`, etc.). The source only routes when music is playing.
+2. **Zone (zone level)** — add the ATV to the zone's ATV exclusion with `bypass_app_ids: com.apple.TVMusic`. The exclusion only fires for non-music apps.
+
+Result: Apple Music → follow-me everywhere. Video → local audio takes over.
 
 ## Entities
 
@@ -92,6 +110,7 @@ If your room has a local streaming device (e.g. Apple TV) driving a dedicated am
 
 A `restore_delay_seconds` value > 0 applies a delay before re-following regardless of condition.
 If a device resumes playing during the delay, the pending restore is cancelled automatically.
+Pausing a device is treated the same as stopping — the restore timer starts immediately.
 
 ## Dashboard
 
