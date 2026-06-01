@@ -116,6 +116,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.17
+- **Fix:** Zone and system options flows now read existing config from `entry.options` first (falling back to `entry.data`). Previously, re-editing a zone or system would show stale original setup values instead of the most recently saved settings, causing all edits after the first to appear to reset.
+
 ### v0.3.16
 - **Fix:** ATV override state now reconciled from current HA states on startup. Previously, if an ATV was already playing when HA restarted, the zone would briefly activate central audio before the first state-change event re-established the override, causing both central audio and local audio to play simultaneously.
 

@@ -388,7 +388,7 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data={**self._system_opts, "sources": self._sources})
 
         source_list = _source_list_for_entity(self.hass, self._ref_entity)
-        existing = self._entry.data.get("sources", self._entry.options.get("sources", []))
+        existing = self._entry.options.get("sources", self._entry.data.get("sources", []))
         src = existing[len(self._sources)] if len(self._sources) < len(existing) else {}
 
         source_name_field = (
@@ -469,7 +469,7 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
         )
 
     async def async_step_atv(self, user_input=None) -> FlowResult:
-        existing = self._entry.data.get("atv_exclusions", [])
+        existing = self._entry.options.get("atv_exclusions", self._entry.data.get("atv_exclusions", []))
         idx = len(self._atv_exclusions)
 
         if user_input is not None:
