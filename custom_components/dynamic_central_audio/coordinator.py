@@ -198,6 +198,23 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
         self._lock = asyncio.Lock()
 
+    async def async_config_entry_first_refresh(self) -> None:
+        """Pre-populate ATV override state from current HA states before first update."""
+        for excl in self.config.get("atv_exclusions", []):
+            bypass_app_ids = excl.get("bypass_app_ids", [])
+            for entity_id in _excl_entities(excl):
+                state = self.hass.states.get(entity_id)
+                if not state or state.state != "playing":
+                    continue
+                if bypass_app_ids:
+                    app_id = (state.attributes.get("app_id") or "").lower()
+                    app_name = (state.attributes.get("app_name") or "").lower()
+                    if any(f.lower() in (app_id, app_name) for f in bypass_app_ids):
+                        continue
+                self._atv_excluded_by.add(entity_id)
+                _LOGGER.info("%s: startup — %s already playing, override pre-loaded", self.zone_name, entity_id)
+        await super().async_config_entry_first_refresh()
+
     # ── System lookup ─────────────────────────────────────────────────────────
 
     def get_system_coordinator(self) -> Optional[SystemCoordinator]:

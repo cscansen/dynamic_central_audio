@@ -116,6 +116,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.16
+- **Fix:** ATV override state now reconciled from current HA states on startup. Previously, if an ATV was already playing when HA restarted, the zone would briefly activate central audio before the first state-change event re-established the override, causing both central audio and local audio to play simultaneously.
+
 ### v0.3.15
 - **Fix:** Amp no longer activates on zone entry when the ATV is paused or stopped. Previously, walking into a room while the ATV was mid-restore-delay (paused, override still tracked) would turn the amp on for a device that wasn't playing.
 
