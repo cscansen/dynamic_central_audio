@@ -116,6 +116,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.15
+- **Fix:** Amp no longer activates on zone entry when the ATV is paused or stopped. Previously, walking into a room while the ATV was mid-restore-delay (paused, override still tracked) would turn the amp on for a device that wasn't playing.
+
 ### v0.3.14
 - **Feat:** ATV exclusion rules now support `bypass_app_ids` — when the ATV is playing an app in this list (matched against `app_id` or `app_name`), the exclusion is skipped and central audio routes normally. Combine with a source-level app filter to make the Apple TV follow-me for music but take over local audio for video.
 

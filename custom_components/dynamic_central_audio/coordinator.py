@@ -501,6 +501,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
             if mp and self._zone_active:
                 await self._deactivate_zone_immediate("ATV override active on entry")
             for entity_id in list(self._atv_excluded_by):
+                atv_state = self.hass.states.get(entity_id)
+                if not atv_state or atv_state.state != "playing":
+                    _LOGGER.debug("%s: skipping amp activate for %s — state is %s", self.zone_name, entity_id, atv_state.state if atv_state else "unknown")
+                    continue
                 excl = next((e for e in exclusions if entity_id in _excl_entities(e)), None)
                 if excl:
                     amp = excl.get("amp_switch")
