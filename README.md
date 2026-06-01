@@ -116,6 +116,10 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.13
+- **Feat:** App filter list now pre-populates with the entity's current `app_id` and `app_name` when editing an existing source — no need to look up bundle IDs manually
+- **Fix:** `source_off_delay_seconds` no longer silently dropped when saving system options
+
 ### v0.3.12
 - **Fix:** All `async_call_later` timer callbacks now use `@callback`-decorated methods instead of bare lambdas. HA 2025.x+ raises `RuntimeError` on plain lambda callbacks and silently drops the scheduled task, causing occupancy deactivation timers, source-stop timers, follow-me reset timers, and ATV restore-delay timers to never fire.
 
