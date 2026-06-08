@@ -10,8 +10,9 @@ import urllib.request
 
 import websockets
 
-HA_WS  = "ws://ha.iot.scansenconsulting.com:8123/api/websocket"
-HA_API = "http://ha.iot.scansenconsulting.com:8123/api"
+_HA_HOST = os.environ.get("HA_HOST", "homeassistant.local:8123")
+HA_WS  = f"ws://{_HA_HOST}/api/websocket"
+HA_API = f"http://{_HA_HOST}/api"
 HA_TOKEN = os.environ.get("HA_TOKEN", "")
 DASHBOARD_PATH = "dashboard-audio"
 DOMAIN = "dynamic_central_audio"
