@@ -94,6 +94,15 @@ async def _setup_zone_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         entry.async_on_unload(unsub)
 
+    # Watch the zone's own media player so manual power-on triggers an immediate
+    # coordinator refresh (cancels pending deactivation timers and activates routing).
+    zone_mp = config.get("media_player")
+    if zone_mp:
+        unsub = async_track_state_change_event(
+            hass, [zone_mp], coordinator.handle_zone_mp_change
+        )
+        entry.async_on_unload(unsub)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS_ZONE)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True

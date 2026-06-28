@@ -85,6 +85,15 @@ def _zone_reasoning(coord: ZoneCoordinator) -> str:
         )
 
     if active_source and not occupied:
+        if coord._zone_active:
+            base = float(active_source.get("base_volume", 0.7))
+            offset = coord._volume_offset
+            vol = round(max(0.0, min(1.0, base + offset)), 2)
+            return (
+                f"Following: {active_source['display_name']} (manual override)\n"
+                f"  • Manually powered on — occupancy bypassed\n"
+                f"  • Volume: {vol:.2f}  (base {base:.2f}  offset {offset:+.2f})"
+            )
         return (
             f"Source active ({active_source['display_name']}) — zone unoccupied\n"
             f"  • Will activate when occupancy detected"

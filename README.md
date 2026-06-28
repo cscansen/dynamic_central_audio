@@ -135,6 +135,11 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.3.18
+- **Feat:** Manual zone power-on now bypasses occupancy detection and activates source routing. When a zone's media player is powered on from the dashboard while the room is unoccupied, the coordinator immediately detects the state change, cancels any pending deactivation timers, selects the active source, and sets volume — exactly as if the zone were occupied. Status reports `following: <source> (manual override)`. Disabling Follow Me powers the zone back off as normal.
+- **Feat:** Zone coordinators now subscribe to their own media player's state changes. Manual power-on triggers an immediate coordinator refresh rather than waiting for the 60-second polling interval, preventing race conditions where a pending occupancy-deactivate timer could shut the zone back off before the coordinator detected the manual activation.
+- **Feat:** Zone status sensor reasoning now surfaces a distinct `following (manual override)` message when a zone is active but unoccupied, showing source, base volume, and offset — replacing the previous "Will activate when occupancy detected" text that gave no indication the manual override was working.
+
 ### v0.3.17
 - **Fix:** Zone and system options flows now read existing config from `entry.options` first (falling back to `entry.data`). Previously, re-editing a zone or system would show stale original setup values instead of the most recently saved settings, causing all edits after the first to appear to reset.
 

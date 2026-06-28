@@ -259,6 +259,21 @@ class ZoneCoordinator(DataUpdateCoordinator):
         self.hass.async_create_task(self._process_atv_change(entity_id, new_state.state))
 
     @callback
+    def handle_zone_mp_change(self, event) -> None:
+        """Called when the zone's own media player changes state.
+
+        Detects manual power-on (zone on while coordinator thinks it's off) and
+        immediately requests a refresh so _async_update_data can activate source
+        routing and cancel any pending deactivation timers before they fire.
+        """
+        new_state = event.data.get("new_state")
+        if new_state is None:
+            return
+        if new_state.state not in ("off", "unavailable", "unknown") and not self._zone_active:
+            _LOGGER.info("%s: manual power-on detected — triggering immediate refresh", self.zone_name)
+            self.hass.async_create_task(self.async_request_refresh())
+
+    @callback
     def on_source_changed(self) -> None:
         """Called by system coordinator when active source changes."""
         self._cancel_source_deactivate()
@@ -606,6 +621,23 @@ class ZoneCoordinator(DataUpdateCoordinator):
             }
 
         if active_source and not occupied:
+            # If the zone was manually powered on, honour it — activate source routing
+            # so Follow Me works without presence detection.
+            mp = self.config.get("media_player")
+            if mp:
+                mp_state = self.hass.states.get(mp)
+                if mp_state and mp_state.state not in ("off", "unavailable", "unknown"):
+                    self._cancel_all_deactivate_timers()
+                    async with self._lock:
+                        if not self._zone_active:
+                            await self._activate_zone(active_source)
+                        else:
+                            await self._ensure_source(active_source)
+                    return {
+                        "status": f"{STATUS_FOLLOWING}: {active_source['display_name']} (manual)",
+                        "active": True,
+                        "routing_mode": active_source["display_name"],
+                    }
             return {
                 "status": STATUS_STANDBY,
                 "active": False,
