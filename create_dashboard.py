@@ -83,7 +83,7 @@ def source_slugs_for_system(system_slug: str) -> list[str]:
 
 # ── Card builders ─────────────────────────────────────────────────────────────
 
-def zone_card(zone_slug: str, system_slug: str | None = None) -> dict:
+def zone_card(zone_slug: str, system_slug: str | None = None, speaker_entity: str | None = None) -> dict:
     zone_name = deslugify(zone_slug)
     status_entity = f"sensor.{DOMAIN}_{zone_slug}_status"
     follow_entity  = f"switch.{DOMAIN}_{zone_slug}_follow_me"
@@ -93,9 +93,15 @@ def zone_card(zone_slug: str, system_slug: str | None = None) -> dict:
     entities = [
         {"entity": follow_entity,  "name": "Follow Me"},
         {"entity": status_entity,  "name": "Status"},
-        {"entity": volume_entity,  "name": "Volume Offset"},
-        {"entity": zone_party_entity, "name": "Party Mode (this zone)"},
     ]
+    if speaker_entity:
+        # Preserves a manually-added "Speaker" row (the zone's raw media_player entity,
+        # used to manually power the zone on/off) that this generator has never produced
+        # on its own — its entity_id isn't derivable from the zone slug, so it's carried
+        # over from whatever the live dashboard already has rather than being dropped.
+        entities.append({"entity": speaker_entity, "name": "Speaker"})
+    entities.append({"entity": volume_entity,  "name": "Volume Offset"})
+    entities.append({"entity": zone_party_entity, "name": "Party Mode (this zone)"})
     if system_slug:
         # Surface the whole-house Party Mode switch on every zone card too, so it's
         # reachable from wherever the user is instead of having to find the system card.
@@ -190,6 +196,7 @@ def build_dashboard(
     system_slugs: list[str],
     zone_slugs: list[str],
     zone_floor: dict[str, str] | None = None,
+    zone_speaker: dict[str, str] | None = None,
 ) -> dict:
     cards = [{"type": "heading", "heading": "Dynamic Central Audio", "heading_style": "title"}]
 
@@ -206,6 +213,7 @@ def build_dashboard(
 
     if zone_slugs:
         zone_floor = zone_floor or {}
+        zone_speaker = zone_speaker or {}
         # Group by floor where the HA area/floor registry gives us a confident match;
         # zones with no resolvable floor fall back to a flat "Zones" group instead of
         # being silently dropped or guessed into the wrong floor.
@@ -221,12 +229,12 @@ def build_dashboard(
         for floor_name in sorted(floors):
             cards.append({"type": "heading", "heading": floor_name, "heading_style": "subtitle"})
             for z in floors[floor_name]:
-                cards.append(zone_card(z, primary_system_slug))
+                cards.append(zone_card(z, primary_system_slug, zone_speaker.get(z)))
 
         if unresolved:
             cards.append({"type": "heading", "heading": "Zones", "heading_style": "subtitle"})
             for z in unresolved:
-                cards.append(zone_card(z, primary_system_slug))
+                cards.append(zone_card(z, primary_system_slug, zone_speaker.get(z)))
 
     return {
         "title": "Audio",
@@ -253,6 +261,32 @@ async def ws_call(ws, msg: dict) -> dict:
         data = json.loads(raw)
         if data.get("id") == msg["id"]:
             return data
+
+
+async def resolve_existing_speaker_entities(ws, zone_slugs: list[str]) -> dict[str, str]:
+    """Read the currently-live dashboard (if any) and carry over each zone's manually-added
+    "Speaker" entity row (see zone_card's speaker_entity param) so regenerating the dashboard
+    doesn't silently drop it — its entity_id can't be derived from the zone slug."""
+    resp = await ws_call(ws, {"type": "lovelace/config", "url_path": DASHBOARD_PATH})
+    if not resp.get("success"):
+        return {}
+
+    zone_slug_set = set(zone_slugs)
+    speaker_by_zone: dict[str, str] = {}
+    for card in resp["result"].get("views", [{}])[0].get("cards", []):
+        if card.get("type") != "vertical-stack" or not card.get("cards"):
+            continue
+        entities_card = card["cards"][0]
+        title = entities_card.get("title")
+        if not title:
+            continue
+        slug = slugify(title)
+        if slug not in zone_slug_set:
+            continue
+        for ent in entities_card.get("entities", []):
+            if ent.get("name") == "Speaker" and ent.get("entity"):
+                speaker_by_zone[slug] = ent["entity"]
+    return speaker_by_zone
 
 
 async def resolve_zone_floors(ws, zone_slugs: list[str]) -> dict[str, str]:
@@ -325,7 +359,11 @@ async def main():
         else:
             print("No floor/area matches found — grouping zones flat")
 
-        dashboard = build_dashboard(system_slugs, zone_slugs, zone_floor)
+        zone_speaker = await resolve_existing_speaker_entities(ws, zone_slugs)
+        if zone_speaker:
+            print(f"Preserving existing Speaker rows: {zone_speaker}")
+
+        dashboard = build_dashboard(system_slugs, zone_slugs, zone_floor, zone_speaker)
 
         await ensure_dashboard(ws)
 
