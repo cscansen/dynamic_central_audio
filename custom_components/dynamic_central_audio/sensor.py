@@ -54,7 +54,7 @@ def _zone_reasoning(coord: ZoneCoordinator) -> str:
     if not coord._follow_me:
         return "Follow Me is disabled for this zone"
 
-    if coord._atv_excluded_by:
+    if coord._atv_excluded_by and not coord._party_suspends_exclusion():
         exclusions = coord.config.get("atv_exclusions", [])
         details = []
         for excl in exclusions:
@@ -78,10 +78,11 @@ def _zone_reasoning(coord: ZoneCoordinator) -> str:
         offset = coord._volume_offset
         vol = round(max(0.0, min(1.0, base + offset)), 2)
         occ_str = "always occupied (no sensors configured)" if not sensors else "occupied"
+        party_str = "\n  • Party Mode — ATV exclusion bypassed" if (coord._atv_excluded_by and coord._party_suspends_exclusion()) else ""
         return (
             f"Following: {active_source['display_name']}\n"
             f"  • Zone is {occ_str}\n"
-            f"  • Volume: {vol:.2f}  (base {base:.2f}  offset {offset:+.2f})"
+            f"  • Volume: {vol:.2f}  (base {base:.2f}  offset {offset:+.2f}){party_str}"
         )
 
     if active_source and not occupied:
@@ -111,7 +112,7 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
     if entry_type == ENTRY_TYPE_SYSTEM:
-        async_add_entities([SystemStatusSensor(coordinator)])
+        async_add_entities([SystemStatusSensor(coordinator), PartyModeStatusSensor(coordinator)])
     elif entry_type == ENTRY_TYPE_ZONE:
         zone_name = entry.data.get("zone_name", "Zone")
         async_add_entities([ZoneStatusSensor(coordinator, zone_name)])
@@ -161,6 +162,39 @@ class SystemStatusSensor(CoordinatorEntity, SensorEntity):
         }
 
 
+class PartyModeStatusSensor(CoordinatorEntity, SensorEntity):
+    """Reports Party Mode grouping status for a system."""
+
+    def __init__(self, coordinator: SystemCoordinator) -> None:
+        super().__init__(coordinator)
+        slug = _slugify(coordinator.system_name)
+        self._attr_unique_id = f"{DOMAIN}_{slug}_party_mode_status"
+        self.entity_id = f"sensor.{DOMAIN}_{slug}_party_mode_status"
+        self._attr_has_entity_name = True
+        self._attr_name = "Party Mode Status"
+        self._attr_icon = "mdi:party-popper"
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator._party_status
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        return {
+            "party_mode_active": self.coordinator._party_mode_active,
+            "source_atv": self.coordinator.config.get("party_mode_source_atv"),
+            "target_atvs": self.coordinator.config.get("party_mode_target_atvs", []),
+        }
+
+    @property
+    def device_info(self):
+        slug = _slugify(self.coordinator.system_name)
+        return {
+            "identifiers": {(DOMAIN, f"system_{slug}")},
+            "name": f"{self.coordinator.system_name}",
+        }
+
+
 class ZoneStatusSensor(CoordinatorEntity, SensorEntity):
     """Reports the current follow-me status for a zone."""
 
@@ -188,9 +222,11 @@ class ZoneStatusSensor(CoordinatorEntity, SensorEntity):
             "volume_offset": self.coordinator._volume_offset,
             "routing_mode": self.coordinator.data.get("routing_mode", ROUTING_NONE) if self.coordinator.data else ROUTING_NONE,
             "reasoning": _zone_reasoning(self.coordinator),
+            "zone_party_active": self.coordinator._zone_party_active,
         }
         if self.coordinator._atv_excluded_by:
             attrs["atv_excluded_by"] = list(self.coordinator._atv_excluded_by)
+            attrs["party_mode_suspends_exclusion"] = self.coordinator._party_suspends_exclusion()
         return attrs
 
     @property

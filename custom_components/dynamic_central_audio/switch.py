@@ -27,7 +27,7 @@ async def async_setup_entry(
 
     if entry_type == ENTRY_TYPE_SYSTEM:
         sources = entry.data.get("sources", entry.options.get("sources", []))
-        entities = [SystemActiveSwitch(coordinator)]
+        entities = [SystemActiveSwitch(coordinator), PartyModeSwitch(coordinator)]
         entities += [
             SourceFollowMeSwitch(coordinator, src["display_name"])
             for src in sources
@@ -36,7 +36,10 @@ async def async_setup_entry(
         async_add_entities(entities)
     elif entry_type == ENTRY_TYPE_ZONE:
         zone_name = entry.data.get("zone_name", "Zone")
-        async_add_entities([ZoneFollowMeSwitch(coordinator, zone_name)])
+        async_add_entities([
+            ZoneFollowMeSwitch(coordinator, zone_name),
+            ZonePartyModeSwitch(coordinator, zone_name),
+        ])
 
 
 class SystemActiveSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
@@ -119,6 +122,86 @@ class ZoneFollowMeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         self.coordinator.set_follow_me(False)
+        self.async_write_ha_state()
+
+
+class PartyModeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
+    """System-level Party Mode: groups all target ATVs onto the source ATV via AirPlay 2."""
+
+    def __init__(self, coordinator: SystemCoordinator) -> None:
+        super().__init__(coordinator)
+        slug = _slugify(coordinator.system_name)
+        self._attr_unique_id = f"{DOMAIN}_{slug}_party_mode"
+        self.entity_id = f"switch.{DOMAIN}_{slug}_party_mode"
+        self._attr_has_entity_name = True
+        self._attr_name = "Party Mode"
+        self._attr_icon = "mdi:party-popper"
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if (last := await self.async_get_last_state()) is not None and last.state == "on":
+            self.coordinator.set_party_mode(True)
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator._party_mode_active
+
+    @property
+    def device_info(self):
+        slug = _slugify(self.coordinator.system_name)
+        return {
+            "identifiers": {(DOMAIN, f"system_{slug}")},
+            "name": f"{self.coordinator.system_name}",
+        }
+
+    async def async_turn_on(self, **kwargs) -> None:
+        self.coordinator.set_party_mode(True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        self.coordinator.set_party_mode(False)
+        self.async_write_ha_state()
+
+
+class ZonePartyModeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
+    """Zone-level Party Mode: groups this zone's selected target ATVs onto its own ATV."""
+
+    def __init__(self, coordinator: ZoneCoordinator, zone_name: str) -> None:
+        super().__init__(coordinator)
+        slug = _slugify(zone_name)
+        self._attr_unique_id = f"{DOMAIN}_{slug}_party_mode"
+        self.entity_id = f"switch.{DOMAIN}_{slug}_party_mode"
+        self._attr_has_entity_name = True
+        self._attr_name = "Party Mode"
+        self._attr_icon = "mdi:party-popper"
+        self.zone_name = zone_name
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if (last := await self.async_get_last_state()) is not None and last.state == "on":
+            self.coordinator.set_zone_party_mode(True)
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator._zone_party_active
+
+    @property
+    def device_info(self):
+        slug = _slugify(self.zone_name)
+        system = self.coordinator.get_system_coordinator()
+        system_slug = _slugify(system.system_name) if system else "unknown"
+        return {
+            "identifiers": {(DOMAIN, f"zone_{slug}")},
+            "name": f"{self.zone_name}",
+            "via_device": (DOMAIN, f"system_{system_slug}"),
+        }
+
+    async def async_turn_on(self, **kwargs) -> None:
+        self.coordinator.set_zone_party_mode(True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        self.coordinator.set_zone_party_mode(False)
         self.async_write_ha_state()
 
 

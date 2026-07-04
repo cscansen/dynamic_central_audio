@@ -11,6 +11,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from . import pyatv_bridge
 from .const import (
     DOMAIN,
     ENTRY_TYPE_ZONE,
@@ -18,6 +19,7 @@ from .const import (
     DEFAULT_OFF_DELAY,
     DEFAULT_SOURCE_OFF_DELAY,
     DEFAULT_VOLUME_OFFSET,
+    DEFAULT_PARTY_TRIGGER_APPS,
     RESTORE_ANY_STOPPED,
     RESTORE_ALL_STOPPED,
     RESTORE_OCCUPIED,
@@ -28,6 +30,9 @@ from .const import (
     STATUS_SYSTEM_INACTIVE,
     STATUS_NO_SYSTEM,
     STATUS_IDLE,
+    STATUS_PARTY_ACTIVE,
+    STATUS_PARTY_GROUPING,
+    STATUS_PARTY_ERROR,
     ROUTING_NONE,
 )
 
@@ -41,6 +46,22 @@ def _excl_entities(excl: dict) -> list[str]:
         return list(entities)
     single = excl.get("atv_entity")
     return [single] if single else []
+
+
+def _app_matches(hass: HomeAssistant, entity_id: str, app_ids: list[str]) -> bool:
+    """Return True if the given media_player entity's current app_id/app_name matches any of app_ids.
+
+    Shared by source app filters, ATV bypass_app_ids, and party-mode trigger apps —
+    all three use the same case-insensitive substring match against app_id/app_name.
+    """
+    if not app_ids:
+        return False
+    state = hass.states.get(entity_id)
+    if not state:
+        return False
+    current_app_id = (state.attributes.get("app_id") or "").lower()
+    current_app_name = (state.attributes.get("app_name") or "").lower()
+    return any(f.lower() in (current_app_id, current_app_name) for f in app_ids)
 
 
 class SystemCoordinator(DataUpdateCoordinator):
@@ -61,6 +82,11 @@ class SystemCoordinator(DataUpdateCoordinator):
         self.active_source: Optional[dict] = None
         # Per-source follow-me state: keyed by source display_name
         self._source_follow_me: dict[str, bool] = {}
+
+        # Party mode state
+        self._party_mode_active: bool = False
+        self._party_atv_connection = None
+        self._party_status: str = STATUS_IDLE
 
     @property
     def system_name(self) -> str:
@@ -86,20 +112,12 @@ class SystemCoordinator(DataUpdateCoordinator):
             # Optional app filter — only route if the specified entity is showing an allowed app
             app_filter_entity = source.get("app_filter_entity")
             app_ids = source.get("app_ids", [])
-            if app_filter_entity and app_ids:
-                atv_state = self.hass.states.get(app_filter_entity)
-                if atv_state:
-                    current_app_id = atv_state.attributes.get("app_id", "")
-                    current_app_name = atv_state.attributes.get("app_name", "")
-                    if not any(
-                        f.lower() in (current_app_id.lower(), current_app_name.lower())
-                        for f in app_ids
-                    ):
-                        _LOGGER.debug(
-                            "%s: source %s skipped — app %s/%s not in filter %s",
-                            self.system_name, display_name, current_app_id, current_app_name, app_ids,
-                        )
-                        continue
+            if app_filter_entity and app_ids and not _app_matches(self.hass, app_filter_entity, app_ids):
+                _LOGGER.debug(
+                    "%s: source %s skipped — app filter %s not matched",
+                    self.system_name, display_name, app_ids,
+                )
+                continue
             return source
         return None
 
@@ -111,9 +129,82 @@ class SystemCoordinator(DataUpdateCoordinator):
     def handle_source_change(self, event) -> None:
         """Called when any watcher entity changes state."""
         self.hass.async_create_task(self._async_source_changed())
+        self.hass.async_create_task(self._async_check_party_trigger())
 
     async def _async_source_changed(self) -> None:
         await self.async_request_refresh()
+
+    async def _async_check_party_trigger(self) -> None:
+        """Auto-trigger/auto-off Party Mode based on the configured source ATV's app.
+
+        Only ever fires off AirPlay or a configured app allow-list (party_mode_trigger_apps) —
+        never off a generic "playing" state, so a video app on the source ATV can't start a party.
+        """
+        source_atv = self.config.get("party_mode_source_atv")
+        if not source_atv:
+            return
+        trigger_apps = self.config.get("party_mode_trigger_apps") or DEFAULT_PARTY_TRIGGER_APPS
+        state = self.hass.states.get(source_atv)
+        is_playing = bool(state and state.state == "playing")
+        matches = is_playing and _app_matches(self.hass, source_atv, trigger_apps)
+
+        if matches and self.config.get("party_mode_auto_trigger", True) and not self._party_mode_active:
+            await self.async_enable_party_mode()
+        elif not matches and self.config.get("party_mode_auto_off", True) and self._party_mode_active:
+            await self.async_disable_party_mode()
+
+    async def async_enable_party_mode(self) -> None:
+        source_atv = self.config.get("party_mode_source_atv")
+        if not source_atv:
+            _LOGGER.warning("%s: Party Mode enable requested with no source ATV configured", self.system_name)
+            self._party_status = STATUS_PARTY_ERROR
+            return
+
+        self._party_status = STATUS_PARTY_GROUPING
+        self.async_set_updated_data(self.data)
+
+        source_creds = await pyatv_bridge.get_atv_credentials(self.hass, source_atv)
+        if not source_creds:
+            _LOGGER.warning("%s: Party Mode — source ATV %s has no apple_tv credentials", self.system_name, source_atv)
+            self._party_status = STATUS_PARTY_ERROR
+            self.async_set_updated_data(self.data)
+            return
+
+        target_entities = self.config.get("party_mode_target_atvs") or []
+        all_atvs = await pyatv_bridge.discover_all_atvs(self.hass)
+        targets = [a for a in all_atvs if a["entity_id"] in target_entities and a["entity_id"] != source_atv] if target_entities else [
+            a for a in all_atvs if a["entity_id"] != source_atv
+        ]
+
+        connection = await pyatv_bridge.connect_atv(source_creds)
+        if not connection:
+            self._party_status = STATUS_PARTY_ERROR
+            self.async_set_updated_data(self.data)
+            return
+
+        ok = await pyatv_bridge.group_atvs(connection, targets)
+        self._party_atv_connection = connection
+        self._party_mode_active = ok
+        self._party_status = STATUS_PARTY_ACTIVE if ok else STATUS_PARTY_ERROR
+        _LOGGER.info("%s: Party Mode %s (targets: %s)", self.system_name, "enabled" if ok else "failed", target_entities or "all")
+        self.async_set_updated_data(self.data)
+        await self._notify_zones()
+
+    async def async_disable_party_mode(self) -> None:
+        if self._party_atv_connection:
+            await pyatv_bridge.ungroup_atvs(self._party_atv_connection)
+            self._party_atv_connection = None
+        self._party_mode_active = False
+        self._party_status = STATUS_IDLE
+        _LOGGER.info("%s: Party Mode disabled", self.system_name)
+        self.async_set_updated_data(self.data)
+        await self._notify_zones()
+
+    def set_party_mode(self, enabled: bool) -> None:
+        if enabled:
+            self.hass.async_create_task(self.async_enable_party_mode())
+        else:
+            self.hass.async_create_task(self.async_disable_party_mode())
 
     async def _async_update_data(self) -> dict:
         prev_source = self.active_source
@@ -137,6 +228,8 @@ class SystemCoordinator(DataUpdateCoordinator):
             "routing_mode": self.routing_mode,
             "active_source": self.active_source,
             "system_active": self._system_active,
+            "party_mode_active": self._party_mode_active,
+            "party_status": self._party_status,
         }
 
     async def _notify_zones(self, source_stopped: bool = False) -> None:
@@ -160,6 +253,8 @@ class SystemCoordinator(DataUpdateCoordinator):
             "routing_mode": self.routing_mode,
             "active_source": self.active_source,
             "system_active": self._system_active,
+            "party_mode_active": self._party_mode_active,
+            "party_status": self._party_status,
         })
         self.hass.async_create_task(self._notify_zones(source_stopped=not active))
 
@@ -195,6 +290,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
         # Follow-me 7am auto-reset handle
         self._follow_me_reset_handle: Optional[Any] = None
+
+        # Zone-level party mode state
+        self._zone_party_active: bool = False
+        self._zone_party_connection = None
 
         self._lock = asyncio.Lock()
 
@@ -241,8 +340,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
             return
         if new_state.state == "on":
             self._cancel_occ_deactivate()
-            if self._atv_excluded_by:
-                # ATV was playing while zone was empty — activate amp now that someone entered
+            if self._atv_excluded_by and not self._party_suspends_exclusion():
+                # ATV was playing while zone was empty — activate amp now that someone entered.
+                # Skipped while Party Mode is suspending this exclusion, since central routing
+                # (not the amp override) should take over via the refresh below instead.
                 self.hass.async_create_task(self._activate_atv_overrides())
             self.hass.async_create_task(self.async_request_refresh())
         else:
@@ -374,20 +475,15 @@ class ZoneCoordinator(DataUpdateCoordinator):
             # Check if the current app is in the bypass list — if so, clear any
             # existing exclusion and let central audio route normally
             bypass_app_ids = excl.get("bypass_app_ids", [])
-            if bypass_app_ids:
-                atv_state = self.hass.states.get(entity_id)
-                if atv_state:
-                    current_app_id = (atv_state.attributes.get("app_id") or "").lower()
-                    current_app_name = (atv_state.attributes.get("app_name") or "").lower()
-                    if any(f.lower() in (current_app_id, current_app_name) for f in bypass_app_ids):
-                        _LOGGER.info(
-                            "%s: ATV %s playing bypassed app (%s/%s) — exclusion skipped",
-                            self.zone_name, entity_id, current_app_id, current_app_name,
-                        )
-                        if entity_id in self._atv_excluded_by:
-                            self._atv_excluded_by.discard(entity_id)
-                            self.hass.async_create_task(self.async_request_refresh())
-                        return
+            if bypass_app_ids and _app_matches(self.hass, entity_id, bypass_app_ids):
+                _LOGGER.info(
+                    "%s: ATV %s playing bypassed app — exclusion skipped",
+                    self.zone_name, entity_id,
+                )
+                if entity_id in self._atv_excluded_by:
+                    self._atv_excluded_by.discard(entity_id)
+                    self.hass.async_create_task(self.async_request_refresh())
+                return
 
             # Cancel any pending restore for this entity before re-excluding
             if entity_id in self._atv_restore_handles:
@@ -544,6 +640,74 @@ class ZoneCoordinator(DataUpdateCoordinator):
                         await self.hass.services.async_call("switch", "turn_on", {"entity_id": amp})
         _LOGGER.info("%s: ATV override amp switches activated on entry", self.zone_name)
 
+    # ── Party mode ────────────────────────────────────────────────────────────
+
+    def _party_suspends_exclusion(self) -> bool:
+        """Whether Party Mode should currently bypass this zone's ATV-exclusion gate.
+
+        Safety rule: only suspend the exclusion if NONE of the exclusion rules
+        currently holding an override have an amp_switch configured. A configured
+        amp_switch means the local ATV drives an alternate physical amp for this
+        room — suspending the exclusion there would try to drive the same room
+        from both the HTD zone amp and the local amp_switch simultaneously.
+        """
+        system = self.get_system_coordinator()
+        party_active = self._zone_party_active or bool(system and system._party_mode_active)
+        if not party_active or not self._atv_excluded_by:
+            return party_active
+
+        exclusions = self.config.get("atv_exclusions", [])
+        for entity_id in self._atv_excluded_by:
+            excl = next((e for e in exclusions if entity_id in _excl_entities(e)), None)
+            if excl and excl.get("amp_switch"):
+                return False
+        return True
+
+    async def async_enable_zone_party_mode(self) -> None:
+        target_entities = self.config.get("zone_party_target_atvs") or []
+        # Zone's own ATV is the first configured exclusion's atv entity, per PARTY_MODE.md
+        source_atv = None
+        for excl in self.config.get("atv_exclusions", []):
+            entities = _excl_entities(excl)
+            if entities:
+                source_atv = entities[0]
+                break
+        if not source_atv:
+            _LOGGER.warning("%s: zone Party Mode enable requested with no ATV configured", self.zone_name)
+            return
+
+        source_creds = await pyatv_bridge.get_atv_credentials(self.hass, source_atv)
+        if not source_creds:
+            _LOGGER.warning("%s: zone Party Mode — source ATV %s has no apple_tv credentials", self.zone_name, source_atv)
+            return
+
+        all_atvs = await pyatv_bridge.discover_all_atvs(self.hass)
+        targets = [a for a in all_atvs if a["entity_id"] in target_entities]
+
+        connection = await pyatv_bridge.connect_atv(source_creds)
+        if not connection:
+            return
+
+        ok = await pyatv_bridge.group_atvs(connection, targets)
+        self._zone_party_connection = connection
+        self._zone_party_active = ok
+        _LOGGER.info("%s: zone Party Mode %s (targets: %s)", self.zone_name, "enabled" if ok else "failed", target_entities)
+        self.hass.async_create_task(self.async_request_refresh())
+
+    async def async_disable_zone_party_mode(self) -> None:
+        if self._zone_party_connection:
+            await pyatv_bridge.ungroup_atvs(self._zone_party_connection)
+            self._zone_party_connection = None
+        self._zone_party_active = False
+        _LOGGER.info("%s: zone Party Mode disabled", self.zone_name)
+        self.hass.async_create_task(self.async_request_refresh())
+
+    def set_zone_party_mode(self, enabled: bool) -> None:
+        if enabled:
+            self.hass.async_create_task(self.async_enable_zone_party_mode())
+        else:
+            self.hass.async_create_task(self.async_disable_zone_party_mode())
+
     async def _deactivate_zone_immediate(self, reason: str) -> None:
         mp = self.config.get("media_player")
         if not mp:
@@ -596,7 +760,8 @@ class ZoneCoordinator(DataUpdateCoordinator):
                 await self._deactivate_zone("follow-me disabled")
             return {"status": STATUS_FOLLOW_ME_OFF, "active": False, "routing_mode": ROUTING_NONE}
 
-        if self._atv_excluded_by:
+        party_suspended = self._party_suspends_exclusion()
+        if self._atv_excluded_by and not party_suspended:
             names = ", ".join(self._atv_excluded_by)
             return {"status": f"{STATUS_ATV_OVERRIDE}: {names}", "active": self._zone_active, "routing_mode": ROUTING_NONE}
 
@@ -614,8 +779,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
                     await self._activate_zone(active_source)
                 else:
                     await self._ensure_source(active_source)
+            suffix = " (party mode)" if (self._atv_excluded_by and party_suspended) else ""
             return {
-                "status": f"{STATUS_FOLLOWING}: {active_source['display_name']}",
+                "status": f"{STATUS_FOLLOWING}: {active_source['display_name']}{suffix}",
                 "active": True,
                 "routing_mode": active_source["display_name"],
             }

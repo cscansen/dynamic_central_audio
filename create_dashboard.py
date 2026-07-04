@@ -83,11 +83,26 @@ def source_slugs_for_system(system_slug: str) -> list[str]:
 
 # ── Card builders ─────────────────────────────────────────────────────────────
 
-def zone_card(zone_slug: str) -> dict:
+def zone_card(zone_slug: str, system_slug: str | None = None) -> dict:
     zone_name = deslugify(zone_slug)
     status_entity = f"sensor.{DOMAIN}_{zone_slug}_status"
     follow_entity  = f"switch.{DOMAIN}_{zone_slug}_follow_me"
     volume_entity  = f"number.{DOMAIN}_{zone_slug}_volume_offset"
+    zone_party_entity = f"switch.{DOMAIN}_{zone_slug}_party_mode"
+
+    entities = [
+        {"entity": follow_entity,  "name": "Follow Me"},
+        {"entity": status_entity,  "name": "Status"},
+        {"entity": volume_entity,  "name": "Volume Offset"},
+        {"entity": zone_party_entity, "name": "Party Mode (this zone)"},
+    ]
+    if system_slug:
+        # Surface the whole-house Party Mode switch on every zone card too, so it's
+        # reachable from wherever the user is instead of having to find the system card.
+        entities.append({
+            "entity": f"switch.{DOMAIN}_{system_slug}_party_mode",
+            "name": "Party Mode (whole house)",
+        })
 
     return {
         "type": "vertical-stack",
@@ -95,11 +110,7 @@ def zone_card(zone_slug: str) -> dict:
             {
                 "type": "entities",
                 "title": zone_name,
-                "entities": [
-                    {"entity": follow_entity,  "name": "Follow Me"},
-                    {"entity": status_entity,  "name": "Status"},
-                    {"entity": volume_entity,  "name": "Volume Offset"},
-                ],
+                "entities": entities,
             },
             {
                 "type": "markdown",
@@ -118,9 +129,14 @@ def system_card(system_slug: str) -> dict:
     active_entity = f"switch.{DOMAIN}_{system_slug}_active"
     source_slugs  = source_slugs_for_system(system_slug)
 
+    party_entity = f"switch.{DOMAIN}_{system_slug}_party_mode"
+    party_status_entity = f"sensor.{DOMAIN}_{system_slug}_party_mode_status"
+
     entities = [
         {"entity": active_entity, "name": "System Active"},
         {"entity": status_entity, "name": "Active Source"},
+        {"entity": party_entity, "name": "Party Mode"},
+        {"entity": party_status_entity, "name": "Party Mode Status"},
     ]
     for src_slug in source_slugs:
         entities.append({
@@ -170,7 +186,11 @@ def now_playing_cards() -> list[dict]:
     ]
 
 
-def build_dashboard(system_slugs: list[str], zone_slugs: list[str]) -> dict:
+def build_dashboard(
+    system_slugs: list[str],
+    zone_slugs: list[str],
+    zone_floor: dict[str, str] | None = None,
+) -> dict:
     cards = [{"type": "heading", "heading": "Dynamic Central Audio", "heading_style": "title"}]
 
     # Now Playing section — shows cover art for whichever source is active
@@ -180,10 +200,33 @@ def build_dashboard(system_slugs: list[str], zone_slugs: list[str]) -> dict:
     for slug in system_slugs:
         cards.append(system_card(slug))
 
+    # Single-system assumption for surfacing whole-house Party Mode on zone cards —
+    # matches this household's one-system setup; revisit if multi-system support is added.
+    primary_system_slug = system_slugs[0] if system_slugs else None
+
     if zone_slugs:
-        cards.append({"type": "heading", "heading": "Zones", "heading_style": "subtitle"})
+        zone_floor = zone_floor or {}
+        # Group by floor where the HA area/floor registry gives us a confident match;
+        # zones with no resolvable floor fall back to a flat "Zones" group instead of
+        # being silently dropped or guessed into the wrong floor.
+        floors: dict[str, list[str]] = {}
+        unresolved: list[str] = []
         for z in zone_slugs:
-            cards.append(zone_card(z))
+            floor_name = zone_floor.get(z)
+            if floor_name:
+                floors.setdefault(floor_name, []).append(z)
+            else:
+                unresolved.append(z)
+
+        for floor_name in sorted(floors):
+            cards.append({"type": "heading", "heading": floor_name, "heading_style": "subtitle"})
+            for z in floors[floor_name]:
+                cards.append(zone_card(z, primary_system_slug))
+
+        if unresolved:
+            cards.append({"type": "heading", "heading": "Zones", "heading_style": "subtitle"})
+            for z in unresolved:
+                cards.append(zone_card(z, primary_system_slug))
 
     return {
         "title": "Audio",
@@ -210,6 +253,31 @@ async def ws_call(ws, msg: dict) -> dict:
         data = json.loads(raw)
         if data.get("id") == msg["id"]:
             return data
+
+
+async def resolve_zone_floors(ws, zone_slugs: list[str]) -> dict[str, str]:
+    """Best-effort zone → floor-name mapping via HA's area/floor registry.
+
+    Matches each zone by slugifying HA area names and comparing to the zone slug
+    (e.g. area "Family Room" → "family_room"). Zones with no matching area, or
+    whose area has no floor assigned, are simply omitted — callers should fall
+    back to a flat "Zones" group for those rather than guessing.
+    """
+    areas_resp = await ws_call(ws, {"type": "config/area_registry/list"})
+    floors_resp = await ws_call(ws, {"type": "config/floor_registry/list"})
+    if not areas_resp.get("success") or not floors_resp.get("success"):
+        return {}
+
+    floor_names = {f["floor_id"]: f.get("name", f["floor_id"]) for f in floors_resp.get("result", [])}
+    area_by_slug = {slugify(a.get("name", "")): a for a in areas_resp.get("result", [])}
+
+    zone_floor: dict[str, str] = {}
+    for z in zone_slugs:
+        area = area_by_slug.get(z)
+        floor_id = area.get("floor_id") if area else None
+        if floor_id and floor_id in floor_names:
+            zone_floor[z] = floor_names[floor_id]
+    return zone_floor
 
 
 async def ensure_dashboard(ws) -> None:
@@ -244,14 +312,20 @@ async def main():
         print("No Dynamic Central Audio entities found — is the integration installed and configured?")
         sys.exit(1)
 
-    dashboard = build_dashboard(system_slugs, zone_slugs)
-
     async with websockets.connect(HA_WS) as ws:
         hello = json.loads(await ws.recv())
         assert hello["type"] == "auth_required"
         await ws.send(json.dumps({"type": "auth", "access_token": HA_TOKEN}))
         auth = json.loads(await ws.recv())
         assert auth["type"] == "auth_ok", f"Auth failed: {auth}"
+
+        zone_floor = await resolve_zone_floors(ws, zone_slugs)
+        if zone_floor:
+            print(f"Grouping by floor: {zone_floor}")
+        else:
+            print("No floor/area matches found — grouping zones flat")
+
+        dashboard = build_dashboard(system_slugs, zone_slugs, zone_floor)
 
         await ensure_dashboard(ws)
 

@@ -92,12 +92,22 @@ Result: Apple Music → follow-me everywhere. Video → local audio takes over.
 | `switch.dynamic_central_audio_<system>_active` | Master on/off — disables all zones when off |
 | `switch.dynamic_central_audio_<system>_<source>_follow_me` | Per-source follow-me toggle (one per configured source) |
 | `sensor.dynamic_central_audio_<system>_status` | Active source name; `reasoning` attribute shows full decision |
+| `switch.dynamic_central_audio_<system>_party_mode` | Party Mode — groups selected ATVs onto the source ATV via AirPlay 2 (see [PARTY_MODE.md](PARTY_MODE.md)) |
+| `sensor.dynamic_central_audio_<system>_party_mode_status` | Party Mode grouping status (`party_active`/`idle`/`grouping`/`party_error`) |
 
 ### Per zone
 | Entity | Description |
 |--------|-------------|
 | `switch.dynamic_central_audio_<zone>_follow_me` | Enable/disable follow-me for this zone |
 | `sensor.dynamic_central_audio_<zone>_status` | Zone state; `reasoning` attribute explains why |
+| `switch.dynamic_central_audio_<zone>_party_mode` | Zone-level Party Mode — groups this zone's selected target ATVs onto its own ATV |
+
+### Party Mode
+
+Groups Apple TVs into an AirPlay 2 multi-room set so local ATVs and HTD central zones can play together instead of the local ATV excluding the zone. Requires `pyatv` (installed automatically as a requirement) and existing `apple_tv` integration pairings for credential reuse. See [PARTY_MODE.md](PARTY_MODE.md) for the full design, including:
+- Trigger scope is app-allowlisted (default: AirPlay, Music) — a video app never starts a party
+- A zone's ATV exclusion is only bypassed if none of its exclusion rules use an `amp_switch` (avoids driving the same room's speakers from two amps at once)
+- **Known limitation**: ATV-to-ATV sync is automatic via AirPlay 2, but there's no mechanism to sync an HTD zone's own central-audio playback against the AirPlay group — expect a slight, uncorrected lag between the two in a zone where both are active simultaneously
 | `number.dynamic_central_audio_<zone>_volume_offset` | Fine-tune zone volume (−0.30 to +0.30, persists across restarts) |
 
 ## ATV Exclusion Restore Conditions
@@ -134,6 +144,14 @@ volume offset sliders.
 - ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
 
 ## Changelog
+
+### v0.4.0
+- **Feat:** Party Mode — groups Apple TVs into an AirPlay 2 multi-room set so local ATVs and HTD central zones can play together instead of the local ATV excluding the zone. New `switch.dynamic_central_audio_<system>_party_mode` (system, multi-select target ATVs) and `switch.dynamic_central_audio_<zone>_party_mode` (zone-level, targets this zone's own ATV as source). Auto-trigger is app-allowlisted (default AirPlay, Music) so a video app never starts a party. See [PARTY_MODE.md](PARTY_MODE.md).
+- **Feat:** A zone's ATV exclusion is only bypassed during Party Mode if none of its exclusion rules use an `amp_switch` — avoids driving the same room's speakers from two amps simultaneously. Zones with an `amp_switch` keep their existing exclusion behavior and still get synced party audio through it once their ATV is grouped.
+- **Feat:** New `sensor.dynamic_central_audio_<system>_party_mode_status` reports grouping status (`party_active`/`idle`/`grouping`/`party_error`); zone status sensor reasoning now shows a `(party mode)` suffix when following with the exclusion bypassed.
+- **Feat:** `create_dashboard.py` now adds Party Mode controls to both the system card and every zone card (so it's reachable without navigating away from a zone), and groups zone cards by HA floor when the area/floor registry gives a confident name match, falling back to a flat "Zones" list otherwise.
+- **Chore:** Requires `pyatv` (added to `manifest.json` requirements); reuses existing `apple_tv` integration pairings for credentials — no re-pairing needed.
+- **Known limitation:** ATV-to-ATV sync is automatic via AirPlay 2's grouping protocol, but there is no mechanism to sync an HTD zone's own central-audio playback against the AirPlay group — expect a slight, uncorrected lag between the two when both are active in the same zone simultaneously.
 
 ### v0.3.18
 - **Feat:** Manual zone power-on now bypasses occupancy detection and activates source routing. When a zone's media player is powered on from the dashboard while the room is unoccupied, the coordinator immediately detects the state change, cancels any pending deactivation timers, selects the active source, and sets volume — exactly as if the zone were occupied. Status reports `following: <source> (manual override)`. Disabling Follow Me powers the zone back off as normal.
