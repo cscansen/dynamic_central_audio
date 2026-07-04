@@ -76,11 +76,21 @@ async def connect_atv(credentials: dict):
             return None
         config = atvs[0]
         for protocol, creds in (credentials.get("credentials") or {}).items():
+            # HA's apple_tv config entry stores credential keys as the protocol's
+            # numeric enum value (e.g. "3"), not its name — Protocol["3"] raises
+            # KeyError every time, which a bare except previously swallowed silently,
+            # leaving the connection with no credentials applied at all (hence
+            # pyatv.exceptions.NotSupportedError: output_devices is not supported —
+            # the unauthenticated relay doesn't expose the multi-room audio interface).
             try:
-                proto = Protocol[protocol.upper()]
-                config.set_credentials(proto, creds)
-            except (KeyError, ValueError):
-                continue
+                proto = Protocol(int(protocol))
+            except (ValueError, TypeError):
+                try:
+                    proto = Protocol[str(protocol).upper()]
+                except KeyError:
+                    _LOGGER.warning("Unrecognized pyatv protocol key %r for %s — skipping", protocol, credentials.get("name"))
+                    continue
+            config.set_credentials(proto, creds)
         return await pyatv.connect(config, loop=loop)
     except Exception:
         _LOGGER.exception("Failed to connect to ATV %s", credentials.get("name"))

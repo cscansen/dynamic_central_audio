@@ -145,6 +145,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.4.2
+- **Fix:** `pyatv_bridge.connect_atv` looked up credential protocol keys by name (`Protocol[protocol.upper()]`), but HA's `apple_tv` config entries store them as numeric enum values (e.g. `"3"` for AirPlay). Every lookup raised `KeyError`, silently swallowed by a bare `except`, so no credentials were ever actually applied to the pyatv connection — leaving it unauthenticated and unable to expose the multi-room audio interface (`pyatv.exceptions.NotSupportedError: output_devices is not supported`, surfaced as `party_error`). Now converts by numeric value first, falls back to name lookup, and logs a warning instead of failing silently if a key is unrecognized.
+
 ### v0.4.1
 - **Fix:** `pyatv_bridge.connect_atv` passed `loop=None` to `pyatv.scan()`/`pyatv.connect()`, which crashed (`AttributeError: 'NoneType' object has no attribute 'create_datagram_endpoint'`) instead of using the running event loop. This made every Party Mode connection attempt fail silently, which is why a zone's Party Mode switch would flip on and immediately back off. Now passes the actual running loop.
 
