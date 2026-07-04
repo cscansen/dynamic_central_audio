@@ -5,6 +5,7 @@ entities simply become unavailable) if pyatv is missing or fails to import —
 no other part of Dynamic Central Audio depends on this module.
 """
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -64,8 +65,9 @@ async def connect_atv(credentials: dict):
     if not PYATV_AVAILABLE or not credentials:
         return None
     try:
+        loop = asyncio.get_running_loop()
         atvs = await pyatv.scan(
-            loop=None,
+            loop=loop,
             identifier=credentials.get("identifier"),
             hosts=[credentials["address"]] if credentials.get("address") else None,
         )
@@ -79,7 +81,7 @@ async def connect_atv(credentials: dict):
                 config.set_credentials(proto, creds)
             except (KeyError, ValueError):
                 continue
-        return await pyatv.connect(config, loop=None)
+        return await pyatv.connect(config, loop=loop)
     except Exception:
         _LOGGER.exception("Failed to connect to ATV %s", credentials.get("name"))
         return None

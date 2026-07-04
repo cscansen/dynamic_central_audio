@@ -145,6 +145,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.4.1
+- **Fix:** `pyatv_bridge.connect_atv` passed `loop=None` to `pyatv.scan()`/`pyatv.connect()`, which crashed (`AttributeError: 'NoneType' object has no attribute 'create_datagram_endpoint'`) instead of using the running event loop. This made every Party Mode connection attempt fail silently, which is why a zone's Party Mode switch would flip on and immediately back off. Now passes the actual running loop.
+
 ### v0.4.0
 - **Feat:** Party Mode — groups Apple TVs into an AirPlay 2 multi-room set so local ATVs and HTD central zones can play together instead of the local ATV excluding the zone. New `switch.dynamic_central_audio_<system>_party_mode` (system, multi-select target ATVs) and `switch.dynamic_central_audio_<zone>_party_mode` (zone-level, targets this zone's own ATV as source). Auto-trigger is app-allowlisted (default AirPlay, Music) so a video app never starts a party. See [PARTY_MODE.md](PARTY_MODE.md).
 - **Feat:** A zone's ATV exclusion is only bypassed during Party Mode if none of its exclusion rules use an `amp_switch` — avoids driving the same room's speakers from two amps simultaneously. Zones with an `amp_switch` keep their existing exclusion behavior and still get synced party audio through it once their ATV is grouped.
