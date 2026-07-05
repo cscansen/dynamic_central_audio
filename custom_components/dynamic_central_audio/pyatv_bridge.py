@@ -102,13 +102,16 @@ async def group_atvs(source_connection, target_credentials: list[dict]) -> bool:
     if not source_connection:
         return False
     try:
-        available = await source_connection.audio.output_devices()
+        # output_devices is a property (returns the current list directly), not
+        # an async method — and set_output_devices takes *devices variadic args,
+        # not a single list argument.
+        available = source_connection.audio.output_devices
         target_addresses = {c["address"] for c in target_credentials if c.get("address")}
         selected = [d for d in available if getattr(d, "address", None) in target_addresses]
         if not selected:
             _LOGGER.warning("Party Mode: no matching output devices found among targets")
             return False
-        await source_connection.audio.set_output_devices(selected)
+        await source_connection.audio.set_output_devices(*selected)
         return True
     except Exception:
         _LOGGER.exception("Failed to group ATVs for Party Mode")
@@ -120,7 +123,9 @@ async def ungroup_atvs(source_connection) -> bool:
     if not source_connection:
         return False
     try:
-        await source_connection.audio.set_output_devices([])
+        # No args = clear the group (see group_atvs — *devices is variadic, so
+        # passing [] as a single positional arg is wrong here too).
+        await source_connection.audio.set_output_devices()
         return True
     except Exception:
         _LOGGER.exception("Failed to ungroup ATVs for Party Mode")

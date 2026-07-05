@@ -145,6 +145,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.4.3
+- **Fix:** `pyatv_bridge.group_atvs`/`ungroup_atvs` misused pyatv's `Audio` interface — `output_devices` is a property returning the current list directly, not an async method (`TypeError: 'list' object is not callable`), and `set_output_devices` takes variadic `*devices`, not a single list argument (`TypeError: bad argument type for built-in operation` deep in pyatv's message builder). Now reads `output_devices` as a property and unpacks the selected devices with `*selected` (empty call to clear the group in `ungroup_atvs`). Confirmed against live HA system log — connection/credentials (fixed in v0.4.1/v0.4.2) now succeed; this was the next failure in the chain.
+
 ### v0.4.2
 - **Fix:** `pyatv_bridge.connect_atv` looked up credential protocol keys by name (`Protocol[protocol.upper()]`), but HA's `apple_tv` config entries store them as numeric enum values (e.g. `"3"` for AirPlay). Every lookup raised `KeyError`, silently swallowed by a bare `except`, so no credentials were ever actually applied to the pyatv connection — leaving it unauthenticated and unable to expose the multi-room audio interface (`pyatv.exceptions.NotSupportedError: output_devices is not supported`, surfaced as `party_error`). Now converts by numeric value first, falls back to name lookup, and logs a warning instead of failing silently if a key is unrecognized.
 
