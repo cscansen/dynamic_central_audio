@@ -145,6 +145,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.4.4
+- **Fix:** device matching in `group_atvs` compared against a non-existent `address` field — `pyatv.interface.OutputDevice` only has `identifier`/`name`/`volume`, confirmed by reading pyatv's source directly on the HA host. Also, HA's `apple_tv` config entries store the field as `identifiers` (plural, a list of MAC/UUID/MAC-without-colons formats), not the singular `identifier` this code was reading — so even the intended fix (matching by identifier) was reading a key that never existed, always producing `None`. Now reads `identifiers` and matches against all three formats. Also dropped an `identifier=` filter passed to `pyatv.scan()` that risked excluding the very device it was meant to find, since the wrong format could easily be picked.
+
 ### v0.4.3
 - **Fix:** `pyatv_bridge.group_atvs`/`ungroup_atvs` misused pyatv's `Audio` interface — `output_devices` is a property returning the current list directly, not an async method (`TypeError: 'list' object is not callable`), and `set_output_devices` takes variadic `*devices`, not a single list argument (`TypeError: bad argument type for built-in operation` deep in pyatv's message builder). Now reads `output_devices` as a property and unpacks the selected devices with `*selected` (empty call to clear the group in `ungroup_atvs`). Confirmed against live HA system log — connection/credentials (fixed in v0.4.1/v0.4.2) now succeed; this was the next failure in the chain.
 

@@ -34,9 +34,13 @@ async def get_atv_credentials(hass: HomeAssistant, media_player_entity_id: str) 
     config_entry = hass.config_entries.async_get_entry(entity_entry.config_entry_id)
     if not config_entry or config_entry.domain != "apple_tv":
         return None
+    # HA's apple_tv config entry stores a list of equivalent identifiers (MAC,
+    # UUID, and MAC-without-colons) under "identifiers" — not a single "identifier"
+    # key — since pyatv's own OutputDevice.identifier may report any one of these
+    # forms depending on protocol.
     return {
         "address": config_entry.data.get("address"),
-        "identifier": config_entry.data.get("identifier"),
+        "identifiers": config_entry.data.get("identifiers", []),
         "credentials": config_entry.data.get("credentials", {}),
         "name": config_entry.data.get("name", media_player_entity_id),
     }
@@ -66,9 +70,11 @@ async def connect_atv(credentials: dict):
         return None
     try:
         loop = asyncio.get_running_loop()
+        # Filter by host only — the identifiers list has multiple formats (MAC,
+        # UUID, MAC-without-colons) and passing the wrong one to scan's identifier=
+        # filter would just exclude the device instead of finding it.
         atvs = await pyatv.scan(
             loop=loop,
-            identifier=credentials.get("identifier"),
             hosts=[credentials["address"]] if credentials.get("address") else None,
         )
         if not atvs:
@@ -106,10 +112,20 @@ async def group_atvs(source_connection, target_credentials: list[dict]) -> bool:
         # an async method — and set_output_devices takes *devices variadic args,
         # not a single list argument.
         available = source_connection.audio.output_devices
-        target_addresses = {c["address"] for c in target_credentials if c.get("address")}
-        selected = [d for d in available if getattr(d, "address", None) in target_addresses]
+        # pyatv.interface.OutputDevice only has identifier/name/volume — no address —
+        # so match on identifier. HA's apple_tv config entry stores THREE equivalent
+        # formats per device (MAC, UUID, MAC-without-colons) since pyatv's own
+        # OutputDevice.identifier may report any one of them; match against all.
+        target_identifiers = {
+            ident for c in target_credentials for ident in (c.get("identifiers") or [])
+        }
+        selected = [d for d in available if getattr(d, "identifier", None) in target_identifiers]
         if not selected:
-            _LOGGER.warning("Party Mode: no matching output devices found among targets")
+            _LOGGER.warning(
+                "Party Mode: no matching output devices found among targets. "
+                "Available: %s. Target identifiers: %s",
+                [(d.name, d.identifier) for d in available], target_identifiers,
+            )
             return False
         await source_connection.audio.set_output_devices(*selected)
         return True
