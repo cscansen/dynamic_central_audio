@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE, ROUTING_NONE
+from .const import DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE, ROUTING_NONE, STATUS_PARTY_ACTIVE, STATUS_IDLE
 from .coordinator import SystemCoordinator, ZoneCoordinator, _excl_entities
 
 
@@ -163,7 +163,7 @@ class SystemStatusSensor(CoordinatorEntity, SensorEntity):
 
 
 class PartyModeStatusSensor(CoordinatorEntity, SensorEntity):
-    """Reports Party Mode grouping status for a system."""
+    """Reports Party Mode status for a system."""
 
     def __init__(self, coordinator: SystemCoordinator) -> None:
         super().__init__(coordinator)
@@ -176,14 +176,13 @@ class PartyModeStatusSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> str:
-        return self.coordinator._party_status
+        return STATUS_PARTY_ACTIVE if self.coordinator._party_mode_active else STATUS_IDLE
 
     @property
     def extra_state_attributes(self) -> dict:
         return {
             "party_mode_active": self.coordinator._party_mode_active,
             "source_atv": self.coordinator.config.get("party_mode_source_atv"),
-            "target_atvs": self.coordinator.config.get("party_mode_target_atvs", []),
         }
 
     @property

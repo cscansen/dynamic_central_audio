@@ -92,23 +92,23 @@ Result: Apple Music → follow-me everywhere. Video → local audio takes over.
 | `switch.dynamic_central_audio_<system>_active` | Master on/off — disables all zones when off |
 | `switch.dynamic_central_audio_<system>_<source>_follow_me` | Per-source follow-me toggle (one per configured source) |
 | `sensor.dynamic_central_audio_<system>_status` | Active source name; `reasoning` attribute shows full decision |
-| `switch.dynamic_central_audio_<system>_party_mode` | Party Mode — groups selected ATVs onto the source ATV via AirPlay 2 (see [PARTY_MODE.md](PARTY_MODE.md)) |
-| `sensor.dynamic_central_audio_<system>_party_mode_status` | Party Mode grouping status (`party_active`/`idle`/`grouping`/`party_error`) |
+| `switch.dynamic_central_audio_<system>_party_mode` | Party Mode — suspends every zone's ATV-exclusion gate so central audio keeps playing there too (see [PARTY_MODE.md](PARTY_MODE.md)) |
+| `sensor.dynamic_central_audio_<system>_party_mode_status` | Party Mode status (`party_active`/`idle`) |
 
 ### Per zone
 | Entity | Description |
 |--------|-------------|
 | `switch.dynamic_central_audio_<zone>_follow_me` | Enable/disable follow-me for this zone |
 | `sensor.dynamic_central_audio_<zone>_status` | Zone state; `reasoning` attribute explains why |
-| `switch.dynamic_central_audio_<zone>_party_mode` | Zone-level Party Mode — groups this zone's selected target ATVs onto its own ATV |
+| `switch.dynamic_central_audio_<zone>_party_mode` | Zone-level Party Mode — suspends this zone's own ATV-exclusion gate |
+| `number.dynamic_central_audio_<zone>_volume_offset` | Fine-tune zone volume (−0.30 to +0.30, persists across restarts) |
 
 ### Party Mode
 
-Groups Apple TVs into an AirPlay 2 multi-room set so local ATVs and HTD central zones can play together instead of the local ATV excluding the zone. Requires `pyatv` (installed automatically as a requirement) and existing `apple_tv` integration pairings for credential reuse. See [PARTY_MODE.md](PARTY_MODE.md) for the full design, including:
-- Trigger scope is app-allowlisted (default: AirPlay, Music) — a video app never starts a party
+Lets a zone's local Apple TV play without cutting off central audio to that zone — normally the two are mutually exclusive (see [PARTY_MODE.md](PARTY_MODE.md) for the full design). Central and the local ATV play independently and unsynced (this is **not** AirPlay 2 grouping — an earlier attempt at that was dropped because it required MRP protocol credentials this household's paired Apple TVs don't have). Key points:
+- Auto-trigger (system-level only) is app-allowlisted (default: AirPlay, Music) — a video app never starts a party
 - A zone's ATV exclusion is only bypassed if none of its exclusion rules use an `amp_switch` (avoids driving the same room's speakers from two amps at once)
-- **Known limitation**: ATV-to-ATV sync is automatic via AirPlay 2, but there's no mechanism to sync an HTD zone's own central-audio playback against the AirPlay group — expect a slight, uncorrected lag between the two in a zone where both are active simultaneously
-| `number.dynamic_central_audio_<zone>_volume_offset` | Fine-tune zone volume (−0.30 to +0.30, persists across restarts) |
+- Party Mode clears automatically when the system's Active switch or a zone's Follow Me switch turns off, and always starts off after a restart (not restored)
 
 ## ATV Exclusion Restore Conditions
 
@@ -144,6 +144,11 @@ volume offset sliders.
 - ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
 
 ## Changelog
+
+### v0.5.0
+- **Change:** Party Mode redesigned — dropped AirPlay 2 grouping via `pyatv` (`pyatv_bridge.py` removed, `pyatv` requirement dropped) in favor of the simpler mechanism it needed all along: suspending a zone's ATV-exclusion gate so central audio keeps playing there instead of being cut off. The AirPlay grouping approach required MRP protocol credentials that none of this household's paired Apple TVs actually have, and HA's `apple_tv` integration's reconfigure flow offered no way to add them — confirmed directly against live `core.config_entries` data after four rounds of chasing pyatv API bugs (loop handling, credential protocol-key format, `OutputDevice` property/argument mismatches, wrong field names) that all turned out moot once the underlying MRP requirement was the real blocker.
+- **Feat:** Party Mode (system and zone level) now clears automatically when the system's Active switch or a zone's Follow Me switch turns off, instead of staying stuck on. Both switches always start off after a restart — no longer `RestoreEntity`, since a stale "on" from before a restart shouldn't silently resume.
+- **Change:** Zone-level Party Mode has no config beyond the switch itself now that target-ATV selection is gone — the "Zone Party Mode" options-flow step was removed.
 
 ### v0.4.4
 - **Fix:** device matching in `group_atvs` compared against a non-existent `address` field — `pyatv.interface.OutputDevice` only has `identifier`/`name`/`volume`, confirmed by reading pyatv's source directly on the HA host. Also, HA's `apple_tv` config entries store the field as `identifiers` (plural, a list of MAC/UUID/MAC-without-colons formats), not the singular `identifier` this code was reading — so even the intended fix (matching by identifier) was reading a key that never existed, always producing `None`. Now reads `identifiers` and matches against all three formats. Also dropped an `identifier=` filter passed to `pyatv.scan()` that risked excluding the very device it was meant to find, since the wrong format could easily be picked.

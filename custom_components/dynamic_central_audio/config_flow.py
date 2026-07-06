@@ -9,7 +9,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from . import pyatv_bridge
 from .const import (
     DOMAIN,
     ENTRY_TYPE_SYSTEM,
@@ -26,13 +25,6 @@ from .const import (
     RESTORE_OCCUPIED,
     RESTORE_CONDITIONS,
 )
-
-
-async def _default_party_targets(hass: HomeAssistant) -> list[str]:
-    """All currently-discovered ATV entity_ids — used to default the target-ATV
-    selector to 'everyone' so the common case is a single confirm."""
-    atvs = await pyatv_bridge.discover_all_atvs(hass)
-    return [a["entity_id"] for a in atvs]
 
 
 def _app_options_for_entity(hass: HomeAssistant, entity_id: str) -> list:
@@ -445,14 +437,12 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 **self._system_opts,
                 "sources": self._sources,
                 "party_mode_source_atv": user_input.get("party_mode_source_atv") or "",
-                "party_mode_target_atvs": user_input.get("party_mode_target_atvs", []),
                 "party_mode_trigger_apps": user_input.get("party_mode_trigger_apps", DEFAULT_PARTY_TRIGGER_APPS),
                 "party_mode_auto_trigger": user_input.get("party_mode_auto_trigger", True),
                 "party_mode_auto_off": user_input.get("party_mode_auto_off", True),
             })
 
         source_atv = d.get("party_mode_source_atv", "")
-        default_targets = d.get("party_mode_target_atvs") or await _default_party_targets(self.hass)
         app_options = _app_options_for_entity(self.hass, source_atv)
 
         return self.async_show_form(
@@ -461,9 +451,6 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("party_mode_source_atv", default=source_atv): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="media_player")
                 ),
-                vol.Optional("party_mode_target_atvs", default=default_targets): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="media_player", multiple=True)
-                ),
                 vol.Optional("party_mode_trigger_apps", default=d.get("party_mode_trigger_apps", DEFAULT_PARTY_TRIGGER_APPS)): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=app_options, custom_value=True, multiple=True)
                 ),
@@ -471,7 +458,7 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("party_mode_auto_off", default=d.get("party_mode_auto_off", True)): bool,
             }),
             description_placeholders={
-                "step_title": "Party Mode — target ATVs default to all discovered devices; deselect any you don't want joining.",
+                "step_title": "Party Mode — when on, a zone's local ATV playing no longer cuts off central audio for that zone (zones with an amp_switch-guarded exclusion are unaffected).",
             },
         )
 
@@ -533,7 +520,7 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
             if user_input.get("add_another") and atvs:
                 return await self.async_step_atv()
             self._zone_data["atv_exclusions"] = self._atv_exclusions
-            return await self.async_step_zone_party_mode()
+            return self.async_create_entry(title="", data=self._zone_data)
 
         excl = existing[idx] if idx < len(existing) else {}
         existing_atvs = excl.get("atv_entities") or ([excl["atv_entity"]] if excl.get("atv_entity") else [])
@@ -580,29 +567,3 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
             }),
         )
 
-    async def async_step_zone_party_mode(self, user_input=None) -> FlowResult:
-        d = {**self._entry.data, **self._entry.options}
-
-        if user_input is not None:
-            self._zone_data["zone_party_target_atvs"] = user_input.get("zone_party_target_atvs", [])
-            self._zone_data["zone_party_trigger_apps"] = user_input.get("zone_party_trigger_apps", DEFAULT_PARTY_TRIGGER_APPS)
-            self._zone_data["zone_party_auto_trigger"] = user_input.get("zone_party_auto_trigger", True)
-            self._zone_data["zone_party_auto_off"] = user_input.get("zone_party_auto_off", True)
-            return self.async_create_entry(title="", data=self._zone_data)
-
-        return self.async_show_form(
-            step_id="zone_party_mode",
-            data_schema=vol.Schema({
-                vol.Optional("zone_party_target_atvs", default=d.get("zone_party_target_atvs", [])): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain="media_player", multiple=True)
-                ),
-                vol.Optional("zone_party_trigger_apps", default=d.get("zone_party_trigger_apps", DEFAULT_PARTY_TRIGGER_APPS)): selector.SelectSelector(
-                    selector.SelectSelectorConfig(options=[], custom_value=True, multiple=True)
-                ),
-                vol.Optional("zone_party_auto_trigger", default=d.get("zone_party_auto_trigger", True)): bool,
-                vol.Optional("zone_party_auto_off", default=d.get("zone_party_auto_off", True)): bool,
-            }),
-            description_placeholders={
-                "step_title": "Zone Party Mode — this zone's own ATV (from the exclusion above) is the source; pick which other ATVs should join when this zone starts a party.",
-            },
-        )

@@ -44,21 +44,6 @@ ROUTING_NONE = "none"
 
 # Party mode status values
 STATUS_PARTY_ACTIVE = "party_active"
-STATUS_PARTY_GROUPING = "grouping"
-STATUS_PARTY_ERROR = "party_error"
 
 # Party mode defaults
 DEFAULT_PARTY_TRIGGER_APPS = ["AirPlay", "Music"]
-
-# System-level party mode config keys
-CONF_PARTY_SOURCE_ATV = "party_mode_source_atv"
-CONF_PARTY_TARGET_ATVS = "party_mode_target_atvs"
-CONF_PARTY_TRIGGER_APPS = "party_mode_trigger_apps"
-CONF_PARTY_AUTO_TRIGGER = "party_mode_auto_trigger"
-CONF_PARTY_AUTO_OFF = "party_mode_auto_off"
-
-# Zone-level party mode config keys
-CONF_ZONE_PARTY_TARGET_ATVS = "zone_party_target_atvs"
-CONF_ZONE_PARTY_TRIGGER_APPS = "zone_party_trigger_apps"
-CONF_ZONE_PARTY_AUTO_TRIGGER = "zone_party_auto_trigger"
-CONF_ZONE_PARTY_AUTO_OFF = "zone_party_auto_off"

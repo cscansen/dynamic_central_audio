@@ -125,8 +125,13 @@ class ZoneFollowMeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
         self.async_write_ha_state()
 
 
-class PartyModeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
-    """System-level Party Mode: groups all target ATVs onto the source ATV via AirPlay 2."""
+class PartyModeSwitch(CoordinatorEntity, SwitchEntity):
+    """System-level Party Mode: suspends ATV-exclusion gating so central audio keeps
+    routing to a zone even while its local ATV plays (see ZoneCoordinator._party_suspends_exclusion).
+
+    Always starts off on restart — deliberately not a RestoreEntity, since a stale
+    "on" from before a restart isn't something that should silently resume.
+    """
 
     def __init__(self, coordinator: SystemCoordinator) -> None:
         super().__init__(coordinator)
@@ -136,11 +141,6 @@ class PartyModeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
         self._attr_has_entity_name = True
         self._attr_name = "Party Mode"
         self._attr_icon = "mdi:party-popper"
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        if (last := await self.async_get_last_state()) is not None and last.state == "on":
-            self.coordinator.set_party_mode(True)
 
     @property
     def is_on(self) -> bool:
@@ -163,8 +163,12 @@ class PartyModeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
         self.async_write_ha_state()
 
 
-class ZonePartyModeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
-    """Zone-level Party Mode: groups this zone's selected target ATVs onto its own ATV."""
+class ZonePartyModeSwitch(CoordinatorEntity, SwitchEntity):
+    """Zone-level Party Mode: suspends this zone's own ATV-exclusion gating.
+
+    Always starts off on restart — not a RestoreEntity, same reasoning as
+    PartyModeSwitch above.
+    """
 
     def __init__(self, coordinator: ZoneCoordinator, zone_name: str) -> None:
         super().__init__(coordinator)
@@ -175,11 +179,6 @@ class ZonePartyModeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
         self._attr_name = "Party Mode"
         self._attr_icon = "mdi:party-popper"
         self.zone_name = zone_name
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        if (last := await self.async_get_last_state()) is not None and last.state == "on":
-            self.coordinator.set_zone_party_mode(True)
 
     @property
     def is_on(self) -> bool:

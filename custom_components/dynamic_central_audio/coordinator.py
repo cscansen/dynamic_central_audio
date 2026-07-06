@@ -11,7 +11,6 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from . import pyatv_bridge
 from .const import (
     DOMAIN,
     ENTRY_TYPE_ZONE,
@@ -31,8 +30,6 @@ from .const import (
     STATUS_NO_SYSTEM,
     STATUS_IDLE,
     STATUS_PARTY_ACTIVE,
-    STATUS_PARTY_GROUPING,
-    STATUS_PARTY_ERROR,
     ROUTING_NONE,
 )
 
@@ -83,10 +80,10 @@ class SystemCoordinator(DataUpdateCoordinator):
         # Per-source follow-me state: keyed by source display_name
         self._source_follow_me: dict[str, bool] = {}
 
-        # Party mode state
+        # Party mode state — a plain flag. Enabling it doesn't touch any ATV directly;
+        # it just tells zones (via _party_suspends_exclusion) to stop treating a local
+        # ATV's playback as a reason to cut off central audio for that zone.
         self._party_mode_active: bool = False
-        self._party_atv_connection = None
-        self._party_status: str = STATUS_IDLE
 
     @property
     def system_name(self) -> str:
@@ -154,48 +151,13 @@ class SystemCoordinator(DataUpdateCoordinator):
             await self.async_disable_party_mode()
 
     async def async_enable_party_mode(self) -> None:
-        source_atv = self.config.get("party_mode_source_atv")
-        if not source_atv:
-            _LOGGER.warning("%s: Party Mode enable requested with no source ATV configured", self.system_name)
-            self._party_status = STATUS_PARTY_ERROR
-            return
-
-        self._party_status = STATUS_PARTY_GROUPING
-        self.async_set_updated_data(self.data)
-
-        source_creds = await pyatv_bridge.get_atv_credentials(self.hass, source_atv)
-        if not source_creds:
-            _LOGGER.warning("%s: Party Mode — source ATV %s has no apple_tv credentials", self.system_name, source_atv)
-            self._party_status = STATUS_PARTY_ERROR
-            self.async_set_updated_data(self.data)
-            return
-
-        target_entities = self.config.get("party_mode_target_atvs") or []
-        all_atvs = await pyatv_bridge.discover_all_atvs(self.hass)
-        targets = [a for a in all_atvs if a["entity_id"] in target_entities and a["entity_id"] != source_atv] if target_entities else [
-            a for a in all_atvs if a["entity_id"] != source_atv
-        ]
-
-        connection = await pyatv_bridge.connect_atv(source_creds)
-        if not connection:
-            self._party_status = STATUS_PARTY_ERROR
-            self.async_set_updated_data(self.data)
-            return
-
-        ok = await pyatv_bridge.group_atvs(connection, targets)
-        self._party_atv_connection = connection
-        self._party_mode_active = ok
-        self._party_status = STATUS_PARTY_ACTIVE if ok else STATUS_PARTY_ERROR
-        _LOGGER.info("%s: Party Mode %s (targets: %s)", self.system_name, "enabled" if ok else "failed", target_entities or "all")
+        self._party_mode_active = True
+        _LOGGER.info("%s: Party Mode enabled — zone ATV exclusions suspended (amp_switch zones excepted)", self.system_name)
         self.async_set_updated_data(self.data)
         await self._notify_zones()
 
     async def async_disable_party_mode(self) -> None:
-        if self._party_atv_connection:
-            await pyatv_bridge.ungroup_atvs(self._party_atv_connection)
-            self._party_atv_connection = None
         self._party_mode_active = False
-        self._party_status = STATUS_IDLE
         _LOGGER.info("%s: Party Mode disabled", self.system_name)
         self.async_set_updated_data(self.data)
         await self._notify_zones()
@@ -229,7 +191,6 @@ class SystemCoordinator(DataUpdateCoordinator):
             "active_source": self.active_source,
             "system_active": self._system_active,
             "party_mode_active": self._party_mode_active,
-            "party_status": self._party_status,
         }
 
     async def _notify_zones(self, source_stopped: bool = False) -> None:
@@ -254,9 +215,23 @@ class SystemCoordinator(DataUpdateCoordinator):
             "active_source": self.active_source,
             "system_active": self._system_active,
             "party_mode_active": self._party_mode_active,
-            "party_status": self._party_status,
         })
+        if not active:
+            # Party Mode has no meaning with everything off — clear it here rather
+            # than leaving it stuck "on" for whenever the system reactivates.
+            self._party_mode_active = False
+            self.hass.async_create_task(self._disable_all_zone_party_mode())
         self.hass.async_create_task(self._notify_zones(source_stopped=not active))
+
+    async def _disable_all_zone_party_mode(self) -> None:
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            if entry.data.get("entry_type") != ENTRY_TYPE_ZONE:
+                continue
+            if entry.data.get("system_entry_id") != self._config_entry.entry_id:
+                continue
+            coord = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
+            if isinstance(coord, ZoneCoordinator) and coord._zone_party_active:
+                await coord.async_disable_zone_party_mode()
 
 
 class ZoneCoordinator(DataUpdateCoordinator):
@@ -291,9 +266,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
         # Follow-me 7am auto-reset handle
         self._follow_me_reset_handle: Optional[Any] = None
 
-        # Zone-level party mode state
+        # Zone-level party mode state — a plain flag, same as system-level (see
+        # SystemCoordinator.async_enable_party_mode).
         self._zone_party_active: bool = False
-        self._zone_party_connection = None
 
         self._lock = asyncio.Lock()
 
@@ -664,40 +639,11 @@ class ZoneCoordinator(DataUpdateCoordinator):
         return True
 
     async def async_enable_zone_party_mode(self) -> None:
-        target_entities = self.config.get("zone_party_target_atvs") or []
-        # Zone's own ATV is the first configured exclusion's atv entity, per PARTY_MODE.md
-        source_atv = None
-        for excl in self.config.get("atv_exclusions", []):
-            entities = _excl_entities(excl)
-            if entities:
-                source_atv = entities[0]
-                break
-        if not source_atv:
-            _LOGGER.warning("%s: zone Party Mode enable requested with no ATV configured", self.zone_name)
-            return
-
-        source_creds = await pyatv_bridge.get_atv_credentials(self.hass, source_atv)
-        if not source_creds:
-            _LOGGER.warning("%s: zone Party Mode — source ATV %s has no apple_tv credentials", self.zone_name, source_atv)
-            return
-
-        all_atvs = await pyatv_bridge.discover_all_atvs(self.hass)
-        targets = [a for a in all_atvs if a["entity_id"] in target_entities]
-
-        connection = await pyatv_bridge.connect_atv(source_creds)
-        if not connection:
-            return
-
-        ok = await pyatv_bridge.group_atvs(connection, targets)
-        self._zone_party_connection = connection
-        self._zone_party_active = ok
-        _LOGGER.info("%s: zone Party Mode %s (targets: %s)", self.zone_name, "enabled" if ok else "failed", target_entities)
+        self._zone_party_active = True
+        _LOGGER.info("%s: zone Party Mode enabled — ATV exclusion suspended (unless amp_switch-guarded)", self.zone_name)
         self.hass.async_create_task(self.async_request_refresh())
 
     async def async_disable_zone_party_mode(self) -> None:
-        if self._zone_party_connection:
-            await pyatv_bridge.ungroup_atvs(self._zone_party_connection)
-            self._zone_party_connection = None
         self._zone_party_active = False
         _LOGGER.info("%s: zone Party Mode disabled", self.zone_name)
         self.hass.async_create_task(self.async_request_refresh())
@@ -820,6 +766,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
             self._cancel_follow_me_reset()
         else:
             self._schedule_follow_me_reset()
+            if self._zone_party_active:
+                # Zone Party Mode has no meaning with Follow Me off for this zone.
+                self.hass.async_create_task(self.async_disable_zone_party_mode())
         self.hass.async_create_task(self.async_request_refresh())
 
     def set_volume_offset(self, offset: float) -> None:
