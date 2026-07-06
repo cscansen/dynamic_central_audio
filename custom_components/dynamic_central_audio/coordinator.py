@@ -210,17 +210,18 @@ class SystemCoordinator(DataUpdateCoordinator):
 
     def set_active(self, active: bool) -> None:
         self._system_active = active
+        if not active:
+            # Party Mode has no meaning with everything off — clear it here (before
+            # notifying listeners below) rather than leaving it stuck "on" for
+            # whenever the system reactivates.
+            self._party_mode_active = False
+            self.hass.async_create_task(self._disable_all_zone_party_mode())
         self.async_set_updated_data({
             "routing_mode": self.routing_mode,
             "active_source": self.active_source,
             "system_active": self._system_active,
             "party_mode_active": self._party_mode_active,
         })
-        if not active:
-            # Party Mode has no meaning with everything off — clear it here rather
-            # than leaving it stuck "on" for whenever the system reactivates.
-            self._party_mode_active = False
-            self.hass.async_create_task(self._disable_all_zone_party_mode())
         self.hass.async_create_task(self._notify_zones(source_stopped=not active))
 
     async def _disable_all_zone_party_mode(self) -> None:

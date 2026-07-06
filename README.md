@@ -145,6 +145,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.5.1
+- **Fix:** `set_active(False)` cleared `_party_mode_active` *after* calling `async_set_updated_data()`, so the Party Mode switch's listeners refreshed while the flag was still `True` — turning the system off didn't visibly turn Party Mode off. Confirmed live: toggled system Active off, Party Mode switch stayed "on". Now clears the flag before notifying.
+
 ### v0.5.0
 - **Change:** Party Mode redesigned — dropped AirPlay 2 grouping via `pyatv` (`pyatv_bridge.py` removed, `pyatv` requirement dropped) in favor of the simpler mechanism it needed all along: suspending a zone's ATV-exclusion gate so central audio keeps playing there instead of being cut off. The AirPlay grouping approach required MRP protocol credentials that none of this household's paired Apple TVs actually have, and HA's `apple_tv` integration's reconfigure flow offered no way to add them — confirmed directly against live `core.config_entries` data after four rounds of chasing pyatv API bugs (loop handling, credential protocol-key format, `OutputDevice` property/argument mismatches, wrong field names) that all turned out moot once the underlying MRP requirement was the real blocker.
 - **Feat:** Party Mode (system and zone level) now clears automatically when the system's Active switch or a zone's Follow Me switch turns off, instead of staying stuck on. Both switches always start off after a restart — no longer `RestoreEntity`, since a stale "on" from before a restart shouldn't silently resume.
