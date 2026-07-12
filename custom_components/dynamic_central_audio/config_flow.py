@@ -391,6 +391,9 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
         source_list = _source_list_for_entity(self.hass, self._ref_entity)
         existing = self._entry.options.get("sources", self._entry.data.get("sources", []))
         src = existing[len(self._sources)] if len(self._sources) < len(existing) else {}
+        # More existing sources remain after this one — keep looping by default so a plain
+        # "save" doesn't silently drop them from entry.options["sources"].
+        more_existing_remain = (len(self._sources) + 1) < len(existing)
 
         source_name_field = (
             selector.SelectSelector(selector.SelectSelectorConfig(options=source_list, custom_value=True))
@@ -425,8 +428,12 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("app_ids", default=src.get("app_ids", [])): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=app_options, custom_value=True, multiple=True)
                 ),
-                vol.Optional("add_another", default=False): bool,
+                vol.Optional("add_another", default=more_existing_remain): bool,
             }),
+            description_placeholders={
+                "step_title": f"Editing source {len(self._sources)+1} of {max(len(existing), len(self._sources)+1)}",
+                "hint": "Uncheck \"Add another\" to stop after this source and drop any remaining ones — leave it checked to keep every existing source.",
+            },
         )
 
     async def async_step_party_mode(self, user_input=None) -> FlowResult:

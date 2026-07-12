@@ -85,6 +85,7 @@
       },
       "edit_source": {
         "title": "Edit Source",
+        "description": "{step_title} — {hint}",
         "data": {
           "source_display_name": "Display name",
           "source_name": "Input name",
