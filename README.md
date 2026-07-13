@@ -145,6 +145,9 @@ volume offset sliders.
 
 ## Changelog
 
+### v0.5.2
+- **Fix:** System options flow's "Add another source?" checkbox defaulted to `False`, so saving after editing just the first of several sources (the natural action) skipped straight to the Party Mode step with only that one source, which then overwrote `entry.options["sources"]` and silently dropped every other configured input. Reopening options afterward only showed that one surviving source, reading as if existing inputs had vanished. The checkbox now defaults to checked while unvisited existing sources remain, so a plain save walks through and keeps all of them. Added a "source X of Y" progress hint to the step description.
+
 ### v0.5.1
 - **Fix:** `set_active(False)` cleared `_party_mode_active` *after* calling `async_set_updated_data()`, so the Party Mode switch's listeners refreshed while the flag was still `True` — turning the system off didn't visibly turn Party Mode off. Confirmed live: toggled system Active off, Party Mode switch stayed "on". Now clears the flag before notifying.
 
