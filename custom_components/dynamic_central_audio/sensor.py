@@ -151,6 +151,18 @@ class SystemStatusSensor(CoordinatorEntity, SensorEntity):
             attrs["source_name"] = source.get("source_name")
             attrs["base_volume"] = source.get("base_volume")
             attrs["watcher_entity"] = source.get("watcher_entity")
+
+        # Per-source app filters, so a silently-disabled filter (empty app_ids ⇒ this
+        # source follows on ANY app, video included) is visible without digging through
+        # the config entry storage.
+        attrs["app_filters"] = {
+            src.get("display_name", "?"): {
+                "app_ids": list(src.get("app_ids") or []),
+                "filter_entity": src.get("app_filter_entity") or src.get("watcher_entity"),
+                "filtered": bool(src.get("app_ids")),
+            }
+            for src in self.coordinator.get_sources()
+        }
         return attrs
 
     @property

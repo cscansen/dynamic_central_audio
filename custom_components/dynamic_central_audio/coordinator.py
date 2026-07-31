@@ -49,7 +49,9 @@ def _app_matches(hass: HomeAssistant, entity_id: str, app_ids: list[str]) -> boo
     """Return True if the given media_player entity's current app_id/app_name matches any of app_ids.
 
     Shared by source app filters, ATV bypass_app_ids, and party-mode trigger apps —
-    all three use the same case-insensitive substring match against app_id/app_name.
+    all three use the same case-insensitive *exact* match: a filter value must equal
+    the entity's app_id or app_name outright. "Music" will not match "Apple Music";
+    configure the full app_id (e.g. "com.apple.TVMusic").
     """
     if not app_ids:
         return False
@@ -79,6 +81,9 @@ class SystemCoordinator(DataUpdateCoordinator):
         self.active_source: Optional[dict] = None
         # Per-source follow-me state: keyed by source display_name
         self._source_follow_me: dict[str, bool] = {}
+        # Sources already warned about a missing app_filter_entity, so the warning
+        # fires once per source rather than on every coordinator refresh.
+        self._app_filter_fallback_warned: set[str] = set()
 
         # Party mode state — a plain flag. Enabling it doesn't touch any ATV directly;
         # it just tells zones (via _party_suspends_exclusion) to stop treating a local
@@ -106,15 +111,29 @@ class SystemCoordinator(DataUpdateCoordinator):
             state = self.hass.states.get(watcher)
             if not state or state.state != active_state:
                 continue
-            # Optional app filter — only route if the specified entity is showing an allowed app
-            app_filter_entity = source.get("app_filter_entity")
-            app_ids = source.get("app_ids", [])
-            if app_filter_entity and app_ids and not _app_matches(self.hass, app_filter_entity, app_ids):
-                _LOGGER.debug(
-                    "%s: source %s skipped — app filter %s not matched",
-                    self.system_name, display_name, app_ids,
-                )
-                continue
+            # Optional app filter — only route if the specified entity is showing an allowed app.
+            # An empty app_ids means "no filter". A populated app_ids with a blank
+            # app_filter_entity is a misconfiguration, not permission to route everything:
+            # fall back to the source's own watcher so the filter still applies.
+            app_ids = source.get("app_ids") or []
+            if app_ids:
+                app_filter_entity = source.get("app_filter_entity")
+                if not app_filter_entity:
+                    app_filter_entity = watcher
+                    if display_name not in self._app_filter_fallback_warned:
+                        self._app_filter_fallback_warned.add(display_name)
+                        _LOGGER.warning(
+                            "%s: source %s has app_ids %s but no app_filter_entity — "
+                            "falling back to its watcher entity %s. Set the app filter "
+                            "entity in the integration options to silence this.",
+                            self.system_name, display_name, app_ids, watcher,
+                        )
+                if not _app_matches(self.hass, app_filter_entity, app_ids):
+                    _LOGGER.debug(
+                        "%s: source %s skipped — app filter %s not matched on %s",
+                        self.system_name, display_name, app_ids, app_filter_entity,
+                    )
+                    continue
             return source
         return None
 

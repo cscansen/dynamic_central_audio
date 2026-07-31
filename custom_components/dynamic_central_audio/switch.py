@@ -26,7 +26,10 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
     if entry_type == ENTRY_TYPE_SYSTEM:
-        sources = entry.data.get("sources", entry.options.get("sources", []))
+        # Options-first, matching how the coordinator builds its config
+        # ({**entry.data, **entry.options}). Reading data first left these switches
+        # keyed to stale display names, so they governed no source at all.
+        sources = coordinator.get_sources()
         entities = [SystemActiveSwitch(coordinator), PartyModeSwitch(coordinator)]
         entities += [
             SourceFollowMeSwitch(coordinator, src["display_name"])

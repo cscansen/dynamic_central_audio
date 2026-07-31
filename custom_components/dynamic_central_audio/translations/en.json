@@ -27,6 +27,8 @@
           "active_state": "Active state (e.g. playing)",
           "base_volume": "Base volume (0.0–1.0)",
           "priority": "Priority (0 = highest)",
+          "app_filter_entity": "App filter entity (media player whose current app gates this source \u2014 leave blank to auto-use the watcher entity)",
+          "app_ids": "Allowed app IDs (exact app_id or app_name, e.g. com.apple.TVMusic \u2014 leave EMPTY to follow on any app, including video)",
           "add_another": "Add another source?"
         }
       },
@@ -62,6 +64,7 @@
           "restore_delay_seconds": "Restore delay (seconds before zone re-follows after device stops)",
           "airplay_exception": "Allow AirPlay exception (zone re-follows if AirPlay active when ATV stops)",
           "amp_switch": "Amp switch (turn on when device plays, off when restored)",
+          "bypass_app_ids": "Bypass app IDs (exact match \u2014 these apps do NOT trigger the exclusion, e.g. com.apple.TVMusic)",
           "add_another": "Add another ATV exclusion?"
         }
       }
@@ -93,6 +96,8 @@
           "active_state": "Active state",
           "base_volume": "Base volume",
           "priority": "Priority",
+          "app_filter_entity": "App filter entity (media player whose current app gates this source \u2014 leave blank to auto-use the watcher entity)",
+          "app_ids": "Allowed app IDs (exact match, e.g. com.apple.TVMusic \u2014 leave EMPTY to follow on any app, including video)",
           "add_another": "Add another source?"
         }
       },
@@ -104,6 +109,7 @@
           "restore_delay_seconds": "Restore delay (seconds)",
           "airplay_exception": "AirPlay exception",
           "amp_switch": "Amp switch",
+          "bypass_app_ids": "Bypass app IDs (exact match \u2014 these apps do NOT trigger the exclusion)",
           "add_another": "Add another?"
         }
       }

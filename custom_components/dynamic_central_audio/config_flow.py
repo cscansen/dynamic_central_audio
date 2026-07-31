@@ -27,20 +27,30 @@ from .const import (
 )
 
 
-def _app_options_for_entity(hass: HomeAssistant, entity_id: str) -> list:
-    """Return SelectOptionDict list of app_id + app_name from a media_player entity's current state."""
-    if not entity_id:
-        return []
-    state = hass.states.get(entity_id)
-    if not state:
-        return []
+def _app_options_for_entity(
+    hass: HomeAssistant, entity_id: str, stored: list[str] | None = None
+) -> list:
+    """Return SelectOptionDict list of app_id + app_name for a media_player entity.
+
+    Always includes any already-stored values, whether or not the entity is showing
+    them right now. Without this, re-saving the options flow while the media player
+    happens to be on a different app drops the stored allow-list — which silently
+    disables the filter it was configured to enforce.
+    """
     seen: set[str] = set()
     options = []
-    for attr in ("app_id", "app_name"):
-        val = state.attributes.get(attr, "")
+
+    def _add(val: str) -> None:
         if val and val not in seen:
             options.append(selector.SelectOptionDict(value=val, label=val))
             seen.add(val)
+
+    state = hass.states.get(entity_id) if entity_id else None
+    if state:
+        for attr in ("app_id", "app_name"):
+            _add(state.attributes.get(attr, ""))
+    for val in stored or []:
+        _add(val)
     return options
 
 
@@ -69,6 +79,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Dynamic Central Audio."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         self._setup_type: str = ""
@@ -140,7 +151,12 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "active_state": user_input.get("active_state", DEFAULT_ACTIVE_STATE),
                     "base_volume": float(user_input.get("base_volume", DEFAULT_BASE_VOLUME)),
                     "priority": int(user_input.get("priority", DEFAULT_PRIORITY)),
-                    "app_filter_entity": user_input.get("app_filter_entity") or "",
+                    # An app allow-list with a blank filter entity disables the filter
+                    # entirely, so fall back to the watcher rather than store "".
+                    "app_filter_entity": (
+                        user_input.get("app_filter_entity")
+                        or (watcher if user_input.get("app_ids") else "")
+                    ),
                     "app_ids": user_input.get("app_ids", []),
                 })
 
@@ -190,7 +206,7 @@ class DynamicCentralAudioConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
             description_placeholders={
                 "step_title": f"Source {source_num}",
-                "hint": "Leave watcher entity blank to finish without adding a source. App filter: optionally pick an ATV and list app names (e.g. Music, Spotify) — leave blank to follow on any app.",
+                "hint": "Leave watcher entity blank to finish without adding a source. App filter: leave the app list empty to follow on any app; to restrict it, list exact app_id values (e.g. com.apple.TVMusic) — matching is exact, not partial.",
             },
         )
 
@@ -381,7 +397,12 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                     "active_state": user_input.get("active_state", DEFAULT_ACTIVE_STATE),
                     "base_volume": float(user_input.get("base_volume", DEFAULT_BASE_VOLUME)),
                     "priority": int(user_input.get("priority", DEFAULT_PRIORITY)),
-                    "app_filter_entity": user_input.get("app_filter_entity") or "",
+                    # An app allow-list with a blank filter entity disables the filter
+                    # entirely, so fall back to the watcher rather than store "".
+                    "app_filter_entity": (
+                        user_input.get("app_filter_entity")
+                        or (watcher if user_input.get("app_ids") else "")
+                    ),
                     "app_ids": user_input.get("app_ids", []),
                 })
             if user_input.get("add_another") and watcher:
@@ -400,8 +421,15 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
             if source_list else selector.TextSelector()
         )
 
-        # Suggest current app_id / app_name from the entity as selectable options
-        app_options = _app_options_for_entity(self.hass, src.get("app_filter_entity", ""))
+        # Suggest current app_id / app_name from the entity as selectable options,
+        # always keeping the already-stored ids selectable so a save can't drop them.
+        stored_app_ids = list(src.get("app_ids") or [])
+        # If an allow-list is configured, the filter entity must not be blank — a blank
+        # one disables the filter entirely. Default it to the source's own watcher.
+        app_filter_default = src.get("app_filter_entity") or (
+            src.get("watcher_entity", "") if stored_app_ids else ""
+        )
+        app_options = _app_options_for_entity(self.hass, app_filter_default, stored_app_ids)
 
         return self.async_show_form(
             step_id="edit_source",
@@ -417,22 +445,22 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("base_volume", default=src.get("base_volume", DEFAULT_BASE_VOLUME)): selector.NumberSelector(selector.NumberSelectorConfig(min=0.0, max=1.0, step=0.05)),
                 vol.Optional("priority", default=src.get("priority", DEFAULT_PRIORITY)): selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=20, step=1)),
                 **({
-                    vol.Optional("app_filter_entity", default=src["app_filter_entity"]): selector.EntitySelector(
+                    vol.Optional("app_filter_entity", default=app_filter_default): selector.EntitySelector(
                         selector.EntitySelectorConfig(domain="media_player")
                     )
-                } if src.get("app_filter_entity") else {
+                } if app_filter_default else {
                     vol.Optional("app_filter_entity"): selector.EntitySelector(
                         selector.EntitySelectorConfig(domain="media_player")
                     )
                 }),
-                vol.Optional("app_ids", default=src.get("app_ids", [])): selector.SelectSelector(
+                vol.Optional("app_ids", default=stored_app_ids): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=app_options, custom_value=True, multiple=True)
                 ),
                 vol.Optional("add_another", default=more_existing_remain): bool,
             }),
             description_placeholders={
                 "step_title": f"Editing source {len(self._sources)+1} of {max(len(existing), len(self._sources)+1)}",
-                "hint": "Uncheck \"Add another\" to stop after this source and drop any remaining ones — leave it checked to keep every existing source.",
+                "hint": "Uncheck \"Add another\" to stop after this source and drop any remaining ones — leave it checked to keep every existing source. Clearing the app list makes this source follow you on ANY app, including video.",
             },
         )
 
@@ -450,7 +478,8 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
             })
 
         source_atv = d.get("party_mode_source_atv", "")
-        app_options = _app_options_for_entity(self.hass, source_atv)
+        stored_trigger_apps = list(d.get("party_mode_trigger_apps") or DEFAULT_PARTY_TRIGGER_APPS)
+        app_options = _app_options_for_entity(self.hass, source_atv, stored_trigger_apps)
 
         return self.async_show_form(
             step_id="party_mode",
@@ -458,7 +487,7 @@ class SystemOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional("party_mode_source_atv", default=source_atv): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="media_player")
                 ),
-                vol.Optional("party_mode_trigger_apps", default=d.get("party_mode_trigger_apps", DEFAULT_PARTY_TRIGGER_APPS)): selector.SelectSelector(
+                vol.Optional("party_mode_trigger_apps", default=stored_trigger_apps): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=app_options, custom_value=True, multiple=True)
                 ),
                 vol.Optional("party_mode_auto_trigger", default=d.get("party_mode_auto_trigger", True)): bool,
@@ -532,14 +561,20 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
         excl = existing[idx] if idx < len(existing) else {}
         existing_atvs = excl.get("atv_entities") or ([excl["atv_entity"]] if excl.get("atv_entity") else [])
 
-        # Pre-populate bypass app options from current state of each ATV entity
+        # Pre-populate bypass app options from current state of each ATV entity, and
+        # always keep already-stored ids selectable so a save can't drop them.
+        stored_bypass = list(excl.get("bypass_app_ids") or [])
         bypass_options: list = []
         seen_bypass: set[str] = set()
         for atv_eid in existing_atvs:
-            for opt in _app_options_for_entity(self.hass, atv_eid):
+            for opt in _app_options_for_entity(self.hass, atv_eid, stored_bypass):
                 if opt["value"] not in seen_bypass:
                     bypass_options.append(opt)
                     seen_bypass.add(opt["value"])
+        for val in stored_bypass:
+            if val not in seen_bypass:
+                bypass_options.append(selector.SelectOptionDict(value=val, label=val))
+                seen_bypass.add(val)
 
         return self.async_show_form(
             step_id="atv",
@@ -567,7 +602,7 @@ class ZoneOptionsFlow(config_entries.OptionsFlow):
                         selector.EntitySelectorConfig(domain="switch")
                     )
                 }),
-                vol.Optional("bypass_app_ids", default=excl.get("bypass_app_ids", [])): selector.SelectSelector(
+                vol.Optional("bypass_app_ids", default=stored_bypass): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=bypass_options, custom_value=True, multiple=True)
                 ),
                 vol.Optional("add_another", default=False): bool,

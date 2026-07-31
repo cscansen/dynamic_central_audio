@@ -18,9 +18,9 @@
 
 - [ ] README: document that zones are fully isolated per system entry — alt/room-specific systems with no HA-exposed source stay idle and don't interact with other systems.
 
-- [ ] **App-based exclusion filtering** — per exclusion rule, optional `excluded_apps` list (app_name or app_id strings). If configured, the zone only deactivates when the ATV is playing AND the current `app_name`/`app_id` attribute matches the list. Allows "exclude for Netflix/Plex but not Apple Music." Config: multi-value text field in zone_atv step. Coordinator checks attribute at change time.
+- [x] **App-based exclusion filtering** — shipped in v0.3.14 as `bypass_app_ids` (note the inverted polarity vs. this spec's `excluded_apps`: the configured apps are the ones that *skip* the exclusion). Per exclusion rule, evaluated in `_process_atv_change`.
 
-- [ ] **App-gated source condition** — per source, optional `required_app` field (app_name or app_id). Source is only considered active if the watcher entity is in the right state AND the current app matches. Allows "follow LR ATV only when Apple TV+ is open, not when Music app is playing locally." Config: optional text field in add_source step. Coordinator checks attribute in `resolve_routing()`.
+- [x] **App-gated source condition** — shipped in v0.3.10 as `app_filter_entity` + `app_ids` (not `required_app`), checked in `resolve_routing()`. Matching is exact equality against `app_id`/`app_name`, not substring. Hardened in v0.5.3 after a blank `app_filter_entity` silently disabled the filter for ~weeks.
 
 ## Future / v2+
 

@@ -22,6 +22,53 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate a config entry to the current schema.
+
+    minor_version 2 — repair sources that carry an app_ids allow-list but a blank
+    app_filter_entity. The options flow could save the entity as "" (it had no default
+    when the pre-existing entry.data source dict lacked the key), which silently
+    disabled the filter and let every app trigger follow-me. Backfill the entity from
+    the source's own watcher_entity, which is what the filter is meant to inspect.
+    """
+    if entry.minor_version >= 2:
+        return True
+
+    if entry.data.get("entry_type") != ENTRY_TYPE_SYSTEM:
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+        return True
+
+    def _repair(sources: list[dict]) -> tuple[list[dict], bool]:
+        repaired: list[dict] = []
+        changed = False
+        for source in sources:
+            source = dict(source)
+            if source.get("app_ids") and not source.get("app_filter_entity"):
+                watcher = source.get("watcher_entity")
+                if watcher:
+                    source["app_filter_entity"] = watcher
+                    changed = True
+                    _LOGGER.warning(
+                        "Migrating source %s: app_filter_entity was blank despite "
+                        "app_ids %s — backfilled from watcher_entity %s",
+                        source.get("display_name", "?"), source["app_ids"], watcher,
+                    )
+            repaired.append(source)
+        return repaired, changed
+
+    new_data, data_changed = _repair(list(entry.data.get("sources") or []))
+    new_options, options_changed = _repair(list(entry.options.get("sources") or []))
+
+    updates: dict = {"minor_version": 2}
+    if data_changed:
+        updates["data"] = {**entry.data, "sources": new_data}
+    if options_changed:
+        updates["options"] = {**entry.options, "sources": new_options}
+
+    hass.config_entries.async_update_entry(entry, **updates)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     entry_type = entry.data.get("entry_type")
