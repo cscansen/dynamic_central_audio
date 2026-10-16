@@ -154,6 +154,11 @@ Zone headings use the config entry title, so rename an entry in Settings → Dev
 
 ## Changelog
 
+### v0.6.1
+- **Fix:** zone devices link to their system's device with `via_device_id` (the parent's registry ID) on HA versions
+  that support it. The identifier-tuple `via_device` is deprecated there and stops working in HA 2027.8. Older HA
+  keeps using `via_device`. The four copies of the zone device info are now one coordinator method.
+
 ### v0.6.0
 - **Feat:** the dashboard is built by the integration. The new `dynamic_central_audio.rebuild_dashboard` action builds
   it from the live config and entity registry and saves it through Lovelace, so changes appear on refresh with no

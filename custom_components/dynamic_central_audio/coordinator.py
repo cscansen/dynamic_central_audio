@@ -2,11 +2,13 @@
 
 import asyncio
 import logging
+import re
 from datetime import timedelta
 from typing import Any, Optional
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
@@ -34,6 +36,8 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+_HAS_VIA_DEVICE_ID = "via_device_id" in getattr(dr.DeviceInfo, "__annotations__", {})
 
 
 def _excl_entities(excl: dict) -> list[str]:
@@ -316,6 +320,30 @@ class ZoneCoordinator(DataUpdateCoordinator):
         if not system_entry_id:
             return None
         return self.hass.data.get(DOMAIN, {}).get(system_entry_id)
+
+    def zone_device_info(self) -> dict:
+        """Device info shared by every zone entity, linked under its system's device.
+
+        HA 2026.x takes the parent's registry id (`via_device_id`); the identifier-tuple
+        `via_device` is deprecated there and removed in 2027.8. Older HA only knows
+        `via_device`, so pick whichever this core supports.
+        """
+        def slug(name: str) -> str:
+            return re.sub(r"[^a-z0-9_]", "", name.lower().replace(" ", "_"))
+
+        info: dict = {"identifiers": {(DOMAIN, f"zone_{slug(self.zone_name)}")}, "name": self.zone_name}
+        system = self.get_system_coordinator()
+        if system is None:
+            return info
+        parent = (DOMAIN, f"system_{slug(system.system_name)}")
+        if _HAS_VIA_DEVICE_ID:
+            # Parent not registered yet (zone set up first) → omit; the registry keeps any
+            # link already stored, and the next setup fills it in.
+            if device := dr.async_get(self.hass).async_get_device(identifiers={parent}):
+                info["via_device_id"] = device.id
+        else:
+            info["via_device"] = parent
+        return info
 
     # ── Occupancy ─────────────────────────────────────────────────────────────
 

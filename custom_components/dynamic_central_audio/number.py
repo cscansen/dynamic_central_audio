@@ -70,14 +70,7 @@ class ZoneVolumeOffsetNumber(CoordinatorEntity, RestoreEntity, NumberEntity):
 
     @property
     def device_info(self):
-        slug = _slugify(self.zone_name)
-        system = self.coordinator.get_system_coordinator()
-        system_slug = _slugify(system.system_name) if system else "unknown"
-        return {
-            "identifiers": {(DOMAIN, f"zone_{slug}")},
-            "name": f"{self.zone_name}",
-            "via_device": (DOMAIN, f"system_{system_slug}"),
-        }
+        return self.coordinator.zone_device_info()
 
     async def async_set_native_value(self, value: float) -> None:
         self.coordinator.set_volume_offset(round(value, 2))

@@ -110,14 +110,7 @@ class ZoneFollowMeSwitch(CoordinatorEntity, RestoreEntity, SwitchEntity):
 
     @property
     def device_info(self):
-        slug = _slugify(self.zone_name)
-        system = self.coordinator.get_system_coordinator()
-        system_slug = _slugify(system.system_name) if system else "unknown"
-        return {
-            "identifiers": {(DOMAIN, f"zone_{slug}")},
-            "name": f"{self.zone_name}",
-            "via_device": (DOMAIN, f"system_{system_slug}"),
-        }
+        return self.coordinator.zone_device_info()
 
     async def async_turn_on(self, **kwargs) -> None:
         self.coordinator.set_follow_me(True)
@@ -189,14 +182,7 @@ class ZonePartyModeSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def device_info(self):
-        slug = _slugify(self.zone_name)
-        system = self.coordinator.get_system_coordinator()
-        system_slug = _slugify(system.system_name) if system else "unknown"
-        return {
-            "identifiers": {(DOMAIN, f"zone_{slug}")},
-            "name": f"{self.zone_name}",
-            "via_device": (DOMAIN, f"system_{system_slug}"),
-        }
+        return self.coordinator.zone_device_info()
 
     async def async_turn_on(self, **kwargs) -> None:
         self.coordinator.set_zone_party_mode(True)
