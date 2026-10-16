@@ -12,7 +12,8 @@ from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE
 from .coordinator import SystemCoordinator, ZoneCoordinator, _excl_entities
-from .dashboard import build_dashboard
+from .dashboard import STYLES, build_dashboard
+from .dashboard_fancy import REQUIRED_CARDS
 from .switch import _slugify
 
 DEFAULT_DASHBOARD = "dashboard-audio"
@@ -27,13 +28,28 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     async def rebuild_dashboard(call: ServiceCall) -> None:
-        await async_rebuild_dashboard(hass, call.data.get("dashboard", DEFAULT_DASHBOARD))
+        await async_rebuild_dashboard(hass, call.data.get("dashboard", DEFAULT_DASHBOARD),
+                                      call.data.get("style", "standard"), call.data.get("theme") or None)
 
     hass.services.async_register(DOMAIN, "rebuild_dashboard", rebuild_dashboard)
     return True
 
 
-async def async_rebuild_dashboard(hass: HomeAssistant, url_path: str) -> None:
+async def _missing_cards(lovelace) -> list[str]:
+    """Frontend cards the fancy style needs that aren't registered as dashboard resources."""
+    resources = getattr(lovelace, "resources", None)
+    if resources is None and isinstance(lovelace, dict):
+        resources = lovelace.get("resources")
+    if resources is None:
+        return list(REQUIRED_CARDS)
+    if not getattr(resources, "loaded", True) and hasattr(resources, "async_load"):
+        await resources.async_load()
+    urls = " ".join(str(r.get("url", "")) for r in resources.async_items())
+    return [card for card in REQUIRED_CARDS if card not in urls]
+
+
+async def async_rebuild_dashboard(hass: HomeAssistant, url_path: str, style: str = "standard",
+                                  theme: str | None = None) -> None:
     """Build the Audio dashboard from live config + entity registry and save it to a storage dashboard.
 
     Saving through lovelace (not by writing .storage) updates HA's in-memory copy and notifies open
@@ -98,8 +114,15 @@ async def async_rebuild_dashboard(hass: HomeAssistant, url_path: str) -> None:
         s["sources"] = [src for src in s["sources"] if src["follow_me"]]
     zones = [z for z in zones if complete(z, ("status", "follow_me", "volume", "party"))]
 
-    await target.async_save(build_dashboard(systems, zones))
-    _LOGGER.info("Dynamic Central Audio: rebuilt dashboard /%s (%d zones)", url_path, len(zones))
+    if style not in STYLES:
+        raise HomeAssistantError(f"Unknown dashboard style '{style}' (use one of {', '.join(STYLES)}).")
+    if style == "fancy" and (missing := await _missing_cards(lovelace)):
+        _LOGGER.warning("Audio dashboard: fancy style needs %s (install via HACS); using standard",
+                        ", ".join(missing))
+        style = "standard"
+
+    await target.async_save(build_dashboard(systems, zones, style, theme))
+    _LOGGER.info("Dynamic Central Audio: rebuilt dashboard /%s (%s, %d zones)", url_path, style, len(zones))
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

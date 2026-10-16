@@ -6,6 +6,9 @@
                  speaker power, Follow Me, Volume (the zone's offset) and zone Party Mode.
   Diagnostics  — the routing reasoning for the system and every zone.
 
+`style="fancy"` swaps the Audio view for the custom-card layout in `dashboard_fancy.py`; `theme`
+applies a frontend theme to both views.
+
 Volume is the zone's volume offset, not the speaker's own volume. While a zone follows a
 source, DCA re-applies base_volume + offset every scan, so a raw speaker slider would
 snap back; the offset is the control that sticks.
@@ -15,6 +18,13 @@ Entity IDs are resolved by the caller from the entity registry and passed in. Th
 """
 
 from __future__ import annotations
+
+try:
+    from .dashboard_fancy import build_fancy_main
+except ImportError:  # imported standalone by the unit tests
+    from dashboard_fancy import build_fancy_main
+
+STYLES = ("standard", "fancy")
 
 FULL = {"columns": 12}
 HALF = {"columns": 6}
@@ -74,7 +84,8 @@ def _reasoning_markdown(title: str, status: str) -> dict:
     )}
 
 
-def build_dashboard(systems: list[dict], zones: list[dict]) -> dict:
+def build_dashboard(systems: list[dict], zones: list[dict], style: str = "standard",
+                    theme: str | None = None) -> dict:
     """systems: [{title, status, active, party, party_status, sources: [{name, follow_me, watcher}]}]
     zones:   [{title, status, follow_me, volume, party, speaker?}] — all resolved entity IDs."""
     diag = []
@@ -84,9 +95,17 @@ def build_dashboard(systems: list[dict], zones: list[dict]) -> dict:
             diag.append({"type": "tile", "entity": s["party_status"], "name": "Party mode status",
                          "grid_options": FULL})
     diag += [_reasoning_markdown(z["title"], z["status"]) for z in zones]
-    return {"views": [
+    config: dict = {}
+    if style == "fancy":
+        config["button_card_templates"], sections = build_fancy_main(systems, zones)
+    else:
+        sections = [*map(_system_section, systems), *map(_zone_section, zones)]
+    views = [
         {"title": "Audio", "path": "main", "icon": "mdi:music-note", "type": "sections", "max_columns": 3,
-         "sections": [*map(_system_section, systems), *map(_zone_section, zones)]},
+         "sections": sections},
         {"title": "Diagnostics", "path": "diagnostics", "icon": "mdi:stethoscope", "type": "sections",
          "max_columns": 2, "sections": [{"type": "grid", "column_span": 2, "cards": diag}]},
-    ]}
+    ]
+    if theme:
+        views = [{**view, "theme": theme} for view in views]
+    return {**config, "views": views}

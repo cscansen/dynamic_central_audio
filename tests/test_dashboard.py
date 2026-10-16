@@ -1,4 +1,5 @@
 """Unit tests for dashboard.py — pure builder, no HA required."""
+import json
 import os
 import sys
 
@@ -86,3 +87,64 @@ def test_reasoning_only_on_diagnostics():
 def test_zone_without_speaker():
     zone = build_dashboard([], [{**ZONE, "speaker": None}])["views"][0]["sections"][0]
     assert "media_player.garage" not in set(_entities(zone))
+
+
+# --- fancy style -------------------------------------------------------------------------------------
+
+def _fancy(zones=(ZONE,), theme=None):
+    return build_dashboard([SYSTEM], list(zones), "fancy", theme)
+
+
+def test_standard_is_default_and_has_no_custom_cards():
+    cfg = build_dashboard([SYSTEM], [ZONE])
+    assert "button_card_templates" not in cfg
+    assert "custom:" not in json.dumps(cfg)
+
+
+def test_fancy_keeps_views_and_adds_templates():
+    cfg = _fancy()
+    assert [v["path"] for v in cfg["views"]] == ["main", "diagnostics"]
+    assert set(cfg["button_card_templates"]) == {"dca_base", "dca_toggle", "dca_pill", "dca_heading"}
+    assert cfg["views"][1] == build_dashboard([SYSTEM], [ZONE])["views"][1]  # diagnostics unchanged
+
+
+def test_fancy_controls_every_entity_once():
+    ids = list(_entities(_fancy()["views"][0]))
+    for e in (SYSTEM["active"], SYSTEM["party"], ZONE["speaker"], ZONE["follow_me"], ZONE["party"], ZONE["volume"]):
+        assert ids.count(e) == 1, e
+
+
+def test_fancy_hero_per_source_and_nothing_playing():
+    cards = _fancy()["views"][0]["sections"][0]["cards"]
+    heroes = [c for c in cards if c["type"] == "custom:mini-media-player"]
+    assert [c["entity"] for c in heroes] == [s["watcher"] for s in SYSTEM["sources"]]
+    idle = next(c for c in cards if c.get("name") == "Nothing playing")
+    watched = {c["entity"] for c in idle["visibility"][0]["conditions"][0]["conditions"]}
+    assert watched == {s["watcher"] for s in SYSTEM["sources"]}
+
+
+def test_fancy_splits_zones_into_two_columns():
+    zones = [{**ZONE, "title": f"Z{i}", "status": f"sensor.z{i}"} for i in range(5)]
+    sections = _fancy(zones)["views"][0]["sections"]
+    assert [len(s["cards"]) for s in sections[1:]] == [3, 2]
+    assert len(_fancy([ZONE])["views"][0]["sections"]) == 2  # no empty column
+
+
+def test_fancy_zone_panel_glows_only_when_active():
+    panel = _fancy()["views"][0]["sections"][1]["cards"][0]
+    assert panel["type"] == "vertical-stack"
+    assert f"states('{ZONE['status']}') in" in panel["card_mod"]["style"]
+
+
+def test_fancy_colours_fall_back_to_standard_theme_vars():
+    assert "var(--glow-accent, var(--primary-color))" in json.dumps(_fancy())
+
+
+def test_fancy_zone_without_speaker():
+    panel = _fancy([{**ZONE, "speaker": None}])["views"][0]["sections"][1]["cards"][0]
+    assert len(panel["cards"][1]["cards"]) == 2
+
+
+def test_theme_applies_to_both_views():
+    assert {v.get("theme") for v in _fancy(theme="Glass")["views"]} == {"Glass"}
+    assert all("theme" not in v for v in build_dashboard([SYSTEM], [ZONE])["views"])

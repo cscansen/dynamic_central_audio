@@ -9,3 +9,20 @@ rebuild_dashboard:
       example: dashboard-audio
       selector:
         text:
+    style:
+      name: Style
+      description: >-
+        standard uses only built-in cards. fancy uses button-card, card-mod and mini-media-player
+        (install via HACS); if any is missing it falls back to standard.
+      default: standard
+      selector:
+        select:
+          options:
+            - standard
+            - fancy
+    theme:
+      name: Theme
+      description: Optional frontend theme for the dashboard's views (e.g. one defining the --glow-* variables).
+      example: Glass
+      selector:
+        theme:

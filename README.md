@@ -143,6 +143,20 @@ restart is needed. It **overwrites the whole dashboard**, so hand edits are lost
 
 Zone headings use the config entry title, so rename an entry in Settings → Devices & services to change its heading.
 
+### Fancy style (optional)
+
+Pass `style: fancy` (and optionally `theme: <name>`) to `rebuild_dashboard` for a styled layout: a large "who's
+playing" header, an album-art card for each playing source, glowing whole-house toggles, and one panel per zone
+with Speaker / Follow me / In party toggles and the Volume slider. The Diagnostics tab is the same.
+
+It needs three frontend cards from HACS: **button-card**, **card-mod** and **mini-media-player**. If any is missing
+the action logs a warning and builds the standard layout instead.
+
+Colours follow your theme. For full control, define these optional theme variables (each falls back to a standard
+HA variable): `glow-card`, `glow-card-hi`, `glow-line`, `glow-accent`, `glow-fill` (background of anything that's
+on), `glow-border`, `glow-border-strong`, `glow-shadow`, `glow-card-shadow`, `glow-blur` (e.g.
+`blur(20px) saturate(160%)` for a frosted-glass look), `glow-text`, `glow-muted`, `glow-faint`.
+
 ## Notes
 
 - Zones are fully isolated per system entry — an alt/room-specific system with no HA-exposed source stays idle and does not interact with other systems
@@ -153,6 +167,12 @@ Zone headings use the config entry title, so rename an entry in Settings → Dev
 - ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
 
 ## Changelog
+
+### v0.7.0
+- **Feat:** optional `style: fancy` for `rebuild_dashboard`: album-art now-playing cards, glowing toggles and one
+  panel per zone, styled through optional `--glow-*` theme variables. Needs button-card, card-mod and
+  mini-media-player; falls back to the standard layout if any is missing. New `theme` field applies a theme to the
+  dashboard's views. The standard layout is unchanged and stays the default.
 
 ### v0.6.1
 - **Fix:** zone devices link to their system's device with `via_device_id` (the parent's registry ID) on HA versions
