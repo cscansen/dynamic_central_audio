@@ -4,12 +4,18 @@ import logging
 from typing import Final
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE
 from .coordinator import SystemCoordinator, ZoneCoordinator, _excl_entities
+from .dashboard import build_dashboard
+from .switch import _slugify
+
+DEFAULT_DASHBOARD = "dashboard-audio"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,7 +25,81 @@ PLATFORMS_ZONE: Final[list[str]] = ["sensor", "switch", "number"]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.data.setdefault(DOMAIN, {})
+
+    async def rebuild_dashboard(call: ServiceCall) -> None:
+        await async_rebuild_dashboard(hass, call.data.get("dashboard", DEFAULT_DASHBOARD))
+
+    hass.services.async_register(DOMAIN, "rebuild_dashboard", rebuild_dashboard)
     return True
+
+
+async def async_rebuild_dashboard(hass: HomeAssistant, url_path: str) -> None:
+    """Build the Audio dashboard from live config + entity registry and save it to a storage dashboard.
+
+    Saving through lovelace (not by writing .storage) updates HA's in-memory copy and notifies open
+    frontends, so the new layout shows up on refresh with no HA restart.
+    """
+    lovelace = hass.data.get("lovelace")
+    dashboards = getattr(lovelace, "dashboards", None)
+    if dashboards is None and isinstance(lovelace, dict):
+        dashboards = lovelace.get("dashboards")
+    target = (dashboards or {}).get(url_path)
+    if target is None or not hasattr(target, "async_save") or getattr(target, "mode", "storage") != "storage":
+        raise HomeAssistantError(
+            f"No UI-managed dashboard at '/{url_path}'. Create one (Settings → Dashboards → Add, "
+            f"URL '{url_path}') and run this again."
+        )
+
+    registry = er.async_get(hass)
+
+    def eid(platform: str, unique_id: str) -> str | None:
+        return registry.async_get_entity_id(platform, DOMAIN, unique_id)
+
+    systems: list[dict] = []
+    zones: list[dict] = []
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        coord = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+        if isinstance(coord, SystemCoordinator):
+            slug = _slugify(coord.system_name)
+            systems.append({
+                "title": entry.title,
+                "status": eid("sensor", f"{DOMAIN}_{slug}_status"),
+                "active": eid("switch", f"{DOMAIN}_{slug}_active"),
+                "party": eid("switch", f"{DOMAIN}_{slug}_party_mode"),
+                "party_status": eid("sensor", f"{DOMAIN}_{slug}_party_mode_status"),
+                "sources": [
+                    {"name": src["display_name"],
+                     "follow_me": eid("switch", f"{DOMAIN}_{slug}_{_slugify(src['display_name'])}_follow_me"),
+                     "watcher": src.get("watcher_entity")}
+                    for src in coord.get_sources() if src.get("display_name")
+                ],
+            })
+        elif isinstance(coord, ZoneCoordinator):
+            slug = _slugify(coord.zone_name)
+            zones.append({
+                "title": entry.title,
+                "status": eid("sensor", f"{DOMAIN}_{slug}_status"),
+                "follow_me": eid("switch", f"{DOMAIN}_{slug}_follow_me"),
+                "volume": eid("number", f"{DOMAIN}_{slug}_volume_offset"),
+                "party": eid("switch", f"{DOMAIN}_{slug}_party_mode"),
+                "speaker": {**entry.data, **entry.options}.get("media_player"),
+            })
+
+    # Drop anything whose entities aren't registered (e.g. an entry that failed setup) rather than
+    # writing cards for entities that don't exist.
+    def complete(d: dict, keys: tuple[str, ...]) -> bool:
+        if all(d.get(k) for k in keys):
+            return True
+        _LOGGER.warning("Audio dashboard: skipping %s, entities missing: %s", d["title"], d)
+        return False
+
+    systems = [s for s in systems if complete(s, ("status", "active", "party"))]
+    for s in systems:
+        s["sources"] = [src for src in s["sources"] if src["follow_me"]]
+    zones = [z for z in zones if complete(z, ("status", "follow_me", "volume", "party"))]
+
+    await target.async_save(build_dashboard(systems, zones))
+    _LOGGER.info("Dynamic Central Audio: rebuilt dashboard /%s (%d zones)", url_path, len(zones))
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

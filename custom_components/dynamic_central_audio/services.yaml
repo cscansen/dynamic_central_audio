@@ -1,0 +1,11 @@
+rebuild_dashboard:
+  name: Rebuild Dashboard
+  description: Regenerate the Audio dashboard from the current system and zone setup and save it (no restart needed).
+  fields:
+    dashboard:
+      name: Dashboard URL
+      description: URL path of an existing UI-managed dashboard to overwrite.
+      default: dashboard-audio
+      example: dashboard-audio
+      selector:
+        text:

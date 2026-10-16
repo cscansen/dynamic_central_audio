@@ -21,7 +21,7 @@ a single, structured integration.
 - **Amp switch support** — toggle an external amp when a local device takes over
 - **Volume management** — per-source base volume + per-zone offset slider (persists across restarts)
 - **Reasoning attribute** — every status sensor exposes a `reasoning` attribute explaining the full decision
-- **Dashboard script** — `create_dashboard.py` auto-discovers your systems and zones and pushes a Lovelace dashboard
+- **Built-in dashboard** — the `dynamic_central_audio.rebuild_dashboard` action builds a Lovelace dashboard from your systems and zones
 
 ## Installation (HACS)
 
@@ -124,15 +124,24 @@ Pausing a device is treated the same as stopping — the restore timer starts im
 
 ## Dashboard
 
-After the integration is configured, run:
+1. **Settings → Dashboards → Add dashboard → New dashboard from scratch.** Title it "Audio" and set the URL to
+   `dashboard-audio`.
+2. Run the action **`dynamic_central_audio.rebuild_dashboard`** (Developer Tools → Actions). Pass
+   `dashboard: <url>` to target a different URL.
 
-```bash
-source ~/.secrets && python3 create_dashboard.py
-```
+Re-run it after adding, removing or renaming systems, sources or zones. It saves directly; no token, script or HA
+restart is needed. It **overwrites the whole dashboard**, so hand edits are lost; change `dashboard.py` instead.
 
-This auto-discovers your systems and zones from HA entity states and pushes a Lovelace
-dashboard to `/dashboard-audio` with per-zone reasoning cards, follow-me toggles, and
-volume offset sliders.
+- **Audio tab:** whole-house section (Central audio on/off, whole-house Party Mode, each source's Follow Me, and
+  now playing with album art), then one section per zone:
+  - Speaker power
+  - Follow Me
+  - **Volume**, which is the zone's offset from the source's base volume. DCA re-applies base + offset while
+    following, so this is the control that sticks.
+  - **Include in party**, which is the zone's own Party Mode.
+- **Diagnostics tab:** the routing `reasoning` for the system and every zone.
+
+Zone headings use the config entry title, so rename an entry in Settings → Devices & services to change its heading.
 
 ## Notes
 
@@ -144,6 +153,19 @@ volume offset sliders.
 - ATV exclusion restore triggers on `idle`, `off`, `paused`, and `standby` states
 
 ## Changelog
+
+### v0.6.0
+- **Feat:** the dashboard is built by the integration. The new `dynamic_central_audio.rebuild_dashboard` action builds
+  it from the live config and entity registry and saves it through Lovelace, so changes appear on refresh with no
+  restart.
+- **Feat:** redesigned the dashboard as Sections tiles.
+  - Whole-house controls and now playing are at the top. When nothing plays it shows "Nothing playing" instead of an
+    empty heading.
+  - Each zone has Speaker, Follow Me, Volume (offset) and Include in party.
+  - Whole-house Party Mode appears once instead of on every zone card.
+  - The reasoning text moved to a Diagnostics tab.
+- **Removed:** `create_dashboard.py`. Each zone's speaker now comes from its config (`media_player`) instead of being
+  copied over from the live dashboard.
 
 ### v0.5.3
 - **Fix:** the per-source app filter had silently stopped applying, so Apple TV **video** followed occupancy between rooms just like music. The stored source had `app_ids: ["com.apple.TVMusic"]` but `app_filter_entity: ""`, and `resolve_routing()` required *both* to be set before checking anything — a blank filter entity meant "no filter", allowing every app, with no log line to say so. `resolve_routing()` now treats a populated `app_ids` as authoritative: if the filter entity is blank it falls back to the source's own `watcher_entity` and logs a warning once, rather than routing everything.

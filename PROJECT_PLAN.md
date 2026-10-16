@@ -69,7 +69,7 @@ System entry       → a second audio controller (fully isolated — zones only 
 {
   "display_name": "AirPlay",
   "source_name": "AirPlay",
-  "watcher_entity": "media_player.airplay_downstairs",
+  "watcher_entity": "media_player.central_airplay",
   "active_state": "playing",
   "base_volume": 0.80,
   "priority": 1
@@ -95,7 +95,7 @@ System entry       → a second audio controller (fully isolated — zones only 
       "restore_condition": "occupied",
       "restore_delay_seconds": 300,
       "airplay_exception": false,
-      "amp_switch": "switch.extra1"
+      "amp_switch": "switch.garage_amp"
     }
   ]
 }
@@ -146,7 +146,6 @@ adaptive_central_audio/              ← git repo root
   PROJECT_PLAN.md                    ← this file
   TODOS.md                           ← deferred work by release
   project_description.md
-  create_dashboard.py                ← one-shot Lovelace dashboard builder
   hacs.json
   README.md
   .gitignore
@@ -172,7 +171,7 @@ adaptive_central_audio/              ← git repo root
 | Main Floor | media_player.main_floor | binary_sensor.main_floor_common_area_occupied | 600s | — |
 | Family Room + Tia's Office | media_player.second_floor | family_room_occupied, calebs_office_occupancy, tias_office_presence_motion | 900s | Family Room ATV + Tia's Office ATV (all_stopped) |
 | Master Bed and Bath | media_player.master_bedroom | binary_sensor.master_bedroom_occupied | 600s | Master Bedroom ATV (any_stopped) |
-| Garage | media_player.garage | binary_sensor.garage_occupied | 600s | Garage ATV (occupied, 300s delay, amp=switch.extra1) |
+| Garage | media_player.garage | binary_sensor.garage_occupied | 600s | Garage ATV (occupied, 300s delay, amp=switch.garage_amp) |
 | Gazebo and Yard | media_player.gazebo | binary_sensor.yard_gazebo_slider_person_detected | 600s | — |
 | Front Porch | media_player.front_porch | — | 600s | — |
 
