@@ -168,6 +168,11 @@ on), `glow-border`, `glow-border-strong`, `glow-shadow`, `glow-card-shadow`, `gl
 
 ## Changelog
 
+### v0.7.1
+- **Fix:** the zone Volume (offset) slider did nothing unless the zone was following a playing source. Now, if the
+  zone's speaker is on and its input matches a configured source, moving the slider sets the speaker to that source's
+  base volume + offset right away. Zones under an Apple TV override are left alone.
+
 ### v0.7.0
 - **Feat:** optional `style: fancy` for `rebuild_dashboard`: album-art now-playing cards, glowing toggles and one
   panel per zone, styled through optional `--glow-*` theme variables. Needs button-card, card-mod and

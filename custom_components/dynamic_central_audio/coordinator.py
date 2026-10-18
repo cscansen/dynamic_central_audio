@@ -821,7 +821,23 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
     def set_volume_offset(self, offset: float) -> None:
         self._volume_offset = offset
+        system = self.get_system_coordinator()
         if self._zone_active:
-            system = self.get_system_coordinator()
             if system and system.active_source:
                 self.hass.async_create_task(self._ensure_source(system.active_source))
+        elif system and not self._atv_excluded_by:
+            self.hass.async_create_task(self._apply_offset_to_idle_speaker(system))
+
+    async def _apply_offset_to_idle_speaker(self, system: SystemCoordinator) -> None:
+        """Speaker is on but not following: apply the offset against the base volume of the
+        source its input is set to, so the slider still works as a volume control."""
+        mp = self.config.get("media_player")
+        state = self.hass.states.get(mp) if mp else None
+        if not state or state.state in ("off", "unavailable", "unknown"):
+            return
+        source = next((s for s in system.get_sources()
+                       if s.get("source_name") and s.get("source_name") == state.attributes.get("source")), None)
+        if source is None:
+            return
+        volume = round(max(0.0, min(1.0, float(source.get("base_volume", 0.7)) + self._volume_offset)), 2)
+        await self.hass.services.async_call("media_player", "volume_set", {"entity_id": mp, "volume_level": volume})
