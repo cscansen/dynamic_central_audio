@@ -168,6 +168,11 @@ on), `glow-border`, `glow-border-strong`, `glow-shadow`, `glow-card-shadow`, `gl
 
 ## Changelog
 
+### v0.7.2
+- **Fix:** a zone that turned on because someone was in the room switched to "(manual)" as soon as the room emptied,
+  which cancelled its off-delay, so it kept playing until the source stopped. Only a speaker someone powered on
+  themselves is treated as manual now; a zone the integration turned on shuts off after the room's off delay.
+
 ### v0.7.1
 - **Fix:** the zone Volume (offset) slider did nothing unless the zone was following a playing source. Now, if the
   zone's speaker is on and its input matches a configured source, moving the slider sets the speaker to that source's

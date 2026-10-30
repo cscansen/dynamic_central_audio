@@ -275,6 +275,9 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
         self._follow_me: bool = True
         self._zone_active: bool = False
+        # True only when someone powered the speaker on themselves (not via occupancy);
+        # cleared when the speaker goes off. Only these zones bypass the empty-room timer.
+        self._manual_on: bool = False
         self._volume_offset: float = DEFAULT_VOLUME_OFFSET
 
         # ATV exclusion tracking: set of atv entity_ids currently overriding this zone
@@ -393,7 +396,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
         new_state = event.data.get("new_state")
         if new_state is None:
             return
-        if new_state.state not in ("off", "unavailable", "unknown") and not self._zone_active:
+        if new_state.state == "off":
+            self._manual_on = False
+            return
+        if new_state.state not in ("unavailable", "unknown") and not self._zone_active:
             _LOGGER.info("%s: manual power-on detected — triggering immediate refresh", self.zone_name)
             self.hass.async_create_task(self.async_request_refresh())
 
@@ -412,6 +418,7 @@ class ZoneCoordinator(DataUpdateCoordinator):
 
     @callback
     def _occ_deactivate_cb(self, _now) -> None:
+        self._occ_deactivate_handle = None
         self.hass.async_create_task(self._deactivate_zone("unoccupied"))
 
     def _schedule_occ_deactivate(self) -> None:
@@ -709,6 +716,7 @@ class ZoneCoordinator(DataUpdateCoordinator):
         _LOGGER.info("%s: deactivating — %s", self.zone_name, reason)
         await self.hass.services.async_call("media_player", "turn_off", {"entity_id": mp})
         self._zone_active = False
+        self._manual_on = False
 
     async def _ensure_source(self, source: dict) -> None:
         """Update source/volume on an already-active zone if source changed."""
@@ -781,23 +789,36 @@ class ZoneCoordinator(DataUpdateCoordinator):
             }
 
         if active_source and not occupied:
+            mp = self.config.get("media_player")
+            mp_state = self.hass.states.get(mp) if mp else None
+            mp_on = bool(mp_state and mp_state.state not in ("off", "unavailable", "unknown"))
+            if mp_on and self._zone_active and not self._manual_on:
+                # We turned it on for occupancy and the room has since emptied: keep
+                # playing until the off-delay timer fires. Never cancel it here.
+                if self._occ_deactivate_handle is None:
+                    self._schedule_occ_deactivate()
+                async with self._lock:
+                    await self._ensure_source(active_source)
+                return {
+                    "status": f"{STATUS_FOLLOWING}: {active_source['display_name']}",
+                    "active": True,
+                    "routing_mode": active_source["display_name"],
+                }
             # If the zone was manually powered on, honour it — activate source routing
             # so Follow Me works without presence detection.
-            mp = self.config.get("media_player")
-            if mp:
-                mp_state = self.hass.states.get(mp)
-                if mp_state and mp_state.state not in ("off", "unavailable", "unknown"):
-                    self._cancel_all_deactivate_timers()
-                    async with self._lock:
-                        if not self._zone_active:
-                            await self._activate_zone(active_source)
-                        else:
-                            await self._ensure_source(active_source)
-                    return {
-                        "status": f"{STATUS_FOLLOWING}: {active_source['display_name']} (manual)",
-                        "active": True,
-                        "routing_mode": active_source["display_name"],
-                    }
+            if mp_on:
+                self._manual_on = True
+                self._cancel_all_deactivate_timers()
+                async with self._lock:
+                    if not self._zone_active:
+                        await self._activate_zone(active_source)
+                    else:
+                        await self._ensure_source(active_source)
+                return {
+                    "status": f"{STATUS_FOLLOWING}: {active_source['display_name']} (manual)",
+                    "active": True,
+                    "routing_mode": active_source["display_name"],
+                }
             return {
                 "status": STATUS_STANDBY,
                 "active": False,

@@ -1,5 +1,13 @@
 # Dynamic Central Audio — Deferred Work
 
+## Open (2026-10-29, after v0.7.2 "(manual)" fix)
+- [ ] After an HA restart, a speaker that's already on in an empty room is treated as "(manual)" — the integration can't
+  tell it turned it on before the restart, so it won't auto-off. Option: persist `_zone_active` (RestoreEntity) or
+  treat an on-at-startup speaker as integration-owned.
+- [ ] `coordinator.py` `zone_device_info` uses `dr.async_get_device(identifiers=…)` — deprecated, breaks in HA 2027.8;
+  switch to `async_get_device_by_identifier`.
+- [ ] v0.7.2 is SSH-patched on HA; cut a GitHub release/tag so HACS (shows v0.7.0) catches up.
+
 ## v0.2.0 — Changes after v0.1.0 testing
 
 ### UI / Label Fixes
