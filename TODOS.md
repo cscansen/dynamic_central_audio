@@ -6,7 +6,7 @@
   treat an on-at-startup speaker as integration-owned.
 - [ ] `coordinator.py` `zone_device_info` uses `dr.async_get_device(identifiers=…)` — deprecated, breaks in HA 2027.8;
   switch to `async_get_device_by_identifier`.
-- [ ] v0.7.2 is SSH-patched on HA; cut a GitHub release/tag so HACS (shows v0.7.0) catches up.
+- [x] v0.7.2 released on GitHub (2026-11-15) and installed through **Private HACS**; DCA is no longer in HACS. Release flow: bump manifest + README changelog, tag, push, `gh release create`, then `private_hacs.update` (`full_name: cscansen/dynamic_central_audio`) + HA restart.
 
 ## v0.2.0 — Changes after v0.1.0 testing
 
