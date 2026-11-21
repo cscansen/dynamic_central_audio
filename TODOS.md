@@ -1,6 +1,12 @@
 # Dynamic Central Audio — Deferred Work
 
 ## Open (2026-10-29, after v0.7.2 "(manual)" fix)
+- [ ] **Bit on 2026-11-20 (v0.7.3 restart):** occupancy sensors are still `unavailable` when DCA first refreshes, so
+  any zone speaker that's on at startup lands in "(manual)" and never auto-offs. Workaround used: reload that zone's
+  config entry once its occupancy sensor is up. Fix candidates: treat on-at-startup as integration-owned, or defer
+  the manual decision until occupancy sensors are available.
+- [ ] Live-verify v0.7.3: watch one empty-room off-delay end with the speaker staying off (main_floor/second_floor logbook:
+  `off` with no `turn_on` right after).
 - [ ] After an HA restart, a speaker that's already on in an empty room is treated as "(manual)" — the integration can't
   tell it turned it on before the restart, so it won't auto-off. Option: persist `_zone_active` (RestoreEntity) or
   treat an on-at-startup speaker as integration-owned.
