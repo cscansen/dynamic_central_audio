@@ -3,8 +3,9 @@
 ## Open (2026-10-29, after v0.7.2 "(manual)" fix)
 - [x] Restart-time "(manual)" (bit 2026-11-20) — fixed in v0.7.4: wait for occupancy sensors (≤5 min), then adopt an
   already-on speaker as integration-owned. Trade-off: a speaker someone turned on by hand before a restart is treated as ours.
-- [ ] Live-verify v0.7.3/v0.7.4: watch one empty-room off-delay end with the speaker staying off (main_floor/second_floor logbook:
-  `off` with no `turn_on` right after).
+- [x] Live-verified 2026-11-20 20:49 MST: second_floor was on through the v0.7.4 restart (adopted, not "(manual)"),
+  source stopped 20:44:48, source off-delay faded it off at 20:49:55, no `turn_on` after. Same `_deactivate_zone_immediate`
+  path as the empty-room off-delay; that trigger itself is covered by tests, not yet watched live.
 - [ ] `coordinator.py` `zone_device_info` uses `dr.async_get_device(identifiers=…)` — deprecated, breaks in HA 2027.8;
   switch to `async_get_device_by_identifier`.
 - [x] v0.7.2 released on GitHub (2026-11-15) and installed through **Private HACS**; DCA is no longer in HACS. Release flow: bump manifest + README changelog, tag, push, `gh release create`, then `private_hacs.update` (`full_name: cscansen/dynamic_central_audio`) + HA restart.
