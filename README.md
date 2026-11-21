@@ -168,6 +168,11 @@ on), `glow-border`, `glow-border-strong`, `glow-shadow`, `glow-card-shadow`, `gl
 
 ## Changelog
 
+### v0.7.4
+- **Fix:** after a Home Assistant restart, a speaker that was already playing came back as "(manual)" and never
+  turned off when its room emptied, because the room sensors hadn't loaded yet. The zone now waits for its room
+  sensors (up to 5 minutes) and then treats an already-on speaker as one it turned on, so the off delay applies.
+
 ### v0.7.3
 - **Fix:** with speakers that fade out when turned off, a zone switched itself straight back on every time its
   off delay ran out, so it never went quiet while music played. The fade-out was mistaken for someone turning the

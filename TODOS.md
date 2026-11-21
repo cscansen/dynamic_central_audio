@@ -1,15 +1,10 @@
 # Dynamic Central Audio — Deferred Work
 
 ## Open (2026-10-29, after v0.7.2 "(manual)" fix)
-- [ ] **Bit on 2026-11-20 (v0.7.3 restart):** occupancy sensors are still `unavailable` when DCA first refreshes, so
-  any zone speaker that's on at startup lands in "(manual)" and never auto-offs. Workaround used: reload that zone's
-  config entry once its occupancy sensor is up. Fix candidates: treat on-at-startup as integration-owned, or defer
-  the manual decision until occupancy sensors are available.
-- [ ] Live-verify v0.7.3: watch one empty-room off-delay end with the speaker staying off (main_floor/second_floor logbook:
+- [x] Restart-time "(manual)" (bit 2026-11-20) — fixed in v0.7.4: wait for occupancy sensors (≤5 min), then adopt an
+  already-on speaker as integration-owned. Trade-off: a speaker someone turned on by hand before a restart is treated as ours.
+- [ ] Live-verify v0.7.3/v0.7.4: watch one empty-room off-delay end with the speaker staying off (main_floor/second_floor logbook:
   `off` with no `turn_on` right after).
-- [ ] After an HA restart, a speaker that's already on in an empty room is treated as "(manual)" — the integration can't
-  tell it turned it on before the restart, so it won't auto-off. Option: persist `_zone_active` (RestoreEntity) or
-  treat an on-at-startup speaker as integration-owned.
 - [ ] `coordinator.py` `zone_device_info` uses `dr.async_get_device(identifiers=…)` — deprecated, breaks in HA 2027.8;
   switch to `async_get_device_by_identifier`.
 - [x] v0.7.2 released on GitHub (2026-11-15) and installed through **Private HACS**; DCA is no longer in HACS. Release flow: bump manifest + README changelog, tag, push, `gh release create`, then `private_hacs.update` (`full_name: cscansen/dynamic_central_audio`) + HA restart.

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+import time
 from datetime import timedelta
 from typing import Any, Optional
 
@@ -36,6 +37,8 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+STARTUP_OCC_WAIT_SEC = 300  # give up waiting for unavailable occupancy sensors after HA start
 
 _HAS_VIA_DEVICE_ID = "via_device_id" in getattr(dr.DeviceInfo, "__annotations__", {})
 
@@ -282,6 +285,12 @@ class ZoneCoordinator(DataUpdateCoordinator):
         # reporting "on" for several seconds while it fades down; that must not read as a
         # person powering it on (v0.7.3 — before, it was turned straight back on).
         self._deactivating: bool = False
+        # Until the first refresh with every occupancy sensor reporting, we can't tell a
+        # speaker someone turned on from one we turned on before an HA restart. Wait for the
+        # sensors (at most STARTUP_OCC_WAIT_SEC), then adopt an already-on speaker as ours so
+        # the empty-room off delay applies to it (v0.7.4).
+        self._startup_pending: bool = True
+        self._created = time.monotonic()
         self._volume_offset: float = DEFAULT_VOLUME_OFFSET
 
         # ATV exclusion tracking: set of atv entity_ids currently overriding this zone
@@ -353,6 +362,12 @@ class ZoneCoordinator(DataUpdateCoordinator):
         return info
 
     # ── Occupancy ─────────────────────────────────────────────────────────────
+
+    def _occupancy_known(self) -> bool:
+        return all(
+            (st := self.hass.states.get(s)) is not None and st.state not in ("unavailable", "unknown")
+            for s in self.config.get("occupancy_sensors", [])
+        )
 
     def _is_occupied(self) -> bool:
         sensors = self.config.get("occupancy_sensors", [])
@@ -789,6 +804,19 @@ class ZoneCoordinator(DataUpdateCoordinator):
         if not self.config.get("media_player"):
             # Amp-only zone — no central audio routing; ATV exclusions handle the amp
             return {"status": STATUS_IDLE, "active": False, "routing_mode": ROUTING_NONE}
+
+        if self._startup_pending:
+            if not self._occupancy_known() and time.monotonic() - self._created < STARTUP_OCC_WAIT_SEC:
+                return {
+                    "status": STATUS_STANDBY,
+                    "active": self._zone_active,
+                    "routing_mode": ROUTING_NONE,
+                }
+            self._startup_pending = False
+            mp_state = self.hass.states.get(self.config["media_player"])
+            if mp_state and mp_state.state not in ("off", "unavailable", "unknown") and not self._zone_active:
+                _LOGGER.info("%s: speaker already on at startup — adopting it (not manual)", self.zone_name)
+                self._zone_active = True
 
         active_source = system.active_source
         occupied = self._is_occupied()

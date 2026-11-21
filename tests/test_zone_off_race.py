@@ -203,6 +203,72 @@ async def test_reentry_during_fade_turns_back_on():
     assert zone._zone_active and not zone._manual_on, (zone._zone_active, zone._manual_on)
 
 
+
+def make_restarted_zone(occ_state):
+    """HA just restarted: speaker already on (we turned it on before), occupancy sensor `occ_state`."""
+    hass = FakeHass()
+    system = types.SimpleNamespace(_system_active=True, _party_mode_active=False, active_source=SOURCE, config={})
+    hass.data[coordinator.DOMAIN] = {"sys": system}
+    hass.set_state(OCC, occ_state)
+    hass.set_state(MP, "on", {"source": "AirPlay", "source_list": ["AirPlay"], "volume_level": 0.8})
+    zone = coordinator.ZoneCoordinator(
+        hass, "Main Floor",
+        {"system_entry_id": "sys", "media_player": MP, "occupancy_sensors": [OCC], "off_delay_seconds": 1},
+        None)
+    hass.listeners.append(zone.handle_zone_mp_change)
+    return hass, zone
+
+
+def occ_event(hass, state):
+    hass.set_state(OCC, state)
+    return types.SimpleNamespace(data={"new_state": hass.states.get(OCC)})
+
+
+async def test_restart_sensor_unavailable_then_empty_turns_off():
+    """Sensors not loaded yet at startup -> no '(manual)'; once they say empty, off delay applies."""
+    hass, zone = make_restarted_zone("unavailable")
+    await zone.async_request_refresh()
+    assert not zone._manual_on and "(manual)" not in zone.data["status"], zone.data
+    assert hass.calls == [], hass.calls
+    zone.handle_occupancy_change(occ_event(hass, "off"))
+    await zone.async_request_refresh()           # next poll
+    assert zone._zone_active and not zone._manual_on, (zone._zone_active, zone._manual_on)
+    await asyncio.sleep(1.0 + FADE_STEPS * STEP_SEC + 0.6)
+    await zone.async_request_refresh()
+    await settle()
+    assert hass.states.get(MP).state == "off", hass.calls
+    assert "turn_on" not in hass.calls, hass.calls
+
+
+async def test_restart_sensor_unavailable_then_occupied_follows():
+    hass, zone = make_restarted_zone("unavailable")
+    await zone.async_request_refresh()
+    zone.handle_occupancy_change(occ_event(hass, "on"))
+    await settle()
+    assert zone._zone_active and not zone._manual_on
+    assert zone.data["status"] == "following: AirPlay (Central)", zone.data["status"]
+
+
+async def test_restart_sensor_never_loads_gives_up():
+    """A dead sensor must not freeze the zone: after the wait, it's treated as empty (adopted, auto-off)."""
+    hass, zone = make_restarted_zone("unavailable")
+    zone._created -= coordinator.STARTUP_OCC_WAIT_SEC + 1
+    await zone.async_request_refresh()
+    assert not zone._startup_pending and zone._zone_active and not zone._manual_on
+    assert zone._occ_deactivate_handle is not None
+
+
+async def test_manual_on_after_startup_still_manual():
+    """After startup settles, a person turning the speaker on in an empty room is still manual."""
+    hass, zone = make_restarted_zone("off")
+    hass.set_state(MP, "off", {"source_list": ["AirPlay"]})
+    await zone.async_request_refresh()
+    assert not zone._startup_pending and not zone._zone_active
+    await hass._run("turn_on", {})
+    await settle()
+    assert zone._manual_on, zone.data
+
+
 def main():
     failed = 0
     for name, fn in list(globals().items()):
