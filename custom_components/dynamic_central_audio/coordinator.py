@@ -278,6 +278,10 @@ class ZoneCoordinator(DataUpdateCoordinator):
         # True only when someone powered the speaker on themselves (not via occupancy);
         # cleared when the speaker goes off. Only these zones bypass the empty-room timer.
         self._manual_on: bool = False
+        # True while our own turn_off is running. A fading speaker (htd_mc 1.3.0) keeps
+        # reporting "on" for several seconds while it fades down; that must not read as a
+        # person powering it on (v0.7.3 — before, it was turned straight back on).
+        self._deactivating: bool = False
         self._volume_offset: float = DEFAULT_VOLUME_OFFSET
 
         # ATV exclusion tracking: set of atv entity_ids currently overriding this zone
@@ -399,6 +403,8 @@ class ZoneCoordinator(DataUpdateCoordinator):
         if new_state.state == "off":
             self._manual_on = False
             return
+        if self._deactivating:
+            return  # our own fade-down, not a manual power-on
         if new_state.state not in ("unavailable", "unknown") and not self._zone_active:
             _LOGGER.info("%s: manual power-on detected — triggering immediate refresh", self.zone_name)
             self.hass.async_create_task(self.async_request_refresh())
@@ -525,11 +531,16 @@ class ZoneCoordinator(DataUpdateCoordinator):
             if self._is_occupied():
                 mp = self.config.get("media_player")
                 async with self._lock:
-                    if mp:
-                        await self._deactivate_zone_immediate(f"ATV override: {entity_id}")
+                    # The speaker fades down for several seconds; switch the TV amp on
+                    # meanwhile rather than after (same timing as before v0.7.3).
+                    off = (self.hass.async_create_task(
+                        self._deactivate_zone_immediate(f"ATV override: {entity_id}"))
+                        if mp else None)
                     amp = excl.get("amp_switch")
                     if amp:
                         await self.hass.services.async_call("switch", "turn_on", {"entity_id": amp})
+                    if off is not None:
+                        await off
             else:
                 _LOGGER.debug("%s: ATV %s override tracked; amp/zone deferred until occupancy", self.zone_name, entity_id)
 
@@ -714,7 +725,15 @@ class ZoneCoordinator(DataUpdateCoordinator):
         if not mp:
             return
         _LOGGER.info("%s: deactivating — %s", self.zone_name, reason)
-        await self.hass.services.async_call("media_player", "turn_off", {"entity_id": mp})
+        # Wait for the speaker to actually be off (blocking) and keep the zone active until
+        # then, so its fade-down can't be mistaken for a manual power-on.
+        self._deactivating = True
+        try:
+            await self.hass.services.async_call(
+                "media_player", "turn_off", {"entity_id": mp}, blocking=True,
+            )
+        finally:
+            self._deactivating = False
         self._zone_active = False
         self._manual_on = False
 
@@ -789,6 +808,13 @@ class ZoneCoordinator(DataUpdateCoordinator):
             }
 
         if active_source and not occupied:
+            if self._deactivating:
+                # Our turn_off is fading the speaker down: leave it alone.
+                return {
+                    "status": STATUS_STANDBY,
+                    "active": False,
+                    "routing_mode": active_source["display_name"],
+                }
             mp = self.config.get("media_player")
             mp_state = self.hass.states.get(mp) if mp else None
             mp_on = bool(mp_state and mp_state.state not in ("off", "unavailable", "unknown"))

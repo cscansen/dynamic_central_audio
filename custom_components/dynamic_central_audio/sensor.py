@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE, ROUTING_NONE, STATUS_PARTY_ACTIVE, STATUS_IDLE
+from .const import DEFAULT_OFF_DELAY, DOMAIN, ENTRY_TYPE_SYSTEM, ENTRY_TYPE_ZONE, ROUTING_NONE, STATUS_PARTY_ACTIVE, STATUS_IDLE
 from .coordinator import SystemCoordinator, ZoneCoordinator, _excl_entities
 
 
@@ -90,6 +90,13 @@ def _zone_reasoning(coord: ZoneCoordinator) -> str:
             base = float(active_source.get("base_volume", 0.7))
             offset = coord._volume_offset
             vol = round(max(0.0, min(1.0, base + offset)), 2)
+            if not coord._manual_on:
+                delay = int(coord.config.get("off_delay_seconds", DEFAULT_OFF_DELAY)) // 60
+                return (
+                    f"Following: {active_source['display_name']}\n"
+                    f"  • Zone is empty — turns off after {delay} min unless someone returns\n"
+                    f"  • Volume: {vol:.2f}  (base {base:.2f}  offset {offset:+.2f})"
+                )
             return (
                 f"Following: {active_source['display_name']} (manual override)\n"
                 f"  • Manually powered on — occupancy bypassed\n"

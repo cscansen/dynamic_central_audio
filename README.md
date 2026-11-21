@@ -168,6 +168,13 @@ on), `glow-border`, `glow-border-strong`, `glow-shadow`, `glow-card-shadow`, `gl
 
 ## Changelog
 
+### v0.7.3
+- **Fix:** with speakers that fade out when turned off, a zone switched itself straight back on every time its
+  off delay ran out, so it never went quiet while music played. The fade-out was mistaken for someone turning the
+  speaker on. The zone now waits for the speaker to finish fading and go off before letting go of it. A speaker
+  someone turns on by hand is still honoured, and walking back in during the fade turns it back on.
+- The zone status explanation no longer says "manually powered on" while an empty room's off delay is counting down.
+
 ### v0.7.2
 - **Fix:** a zone that turned on because someone was in the room switched to "(manual)" as soon as the room emptied,
   which cancelled its off-delay, so it kept playing until the source stopped. Only a speaker someone powered on
